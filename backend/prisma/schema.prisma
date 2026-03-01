@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  STUDENT
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MaterialCategory {
+  NOTES
+  LECTURE_SLIDES
+  LAB_SHEETS
+  TUTORIALS
+  PAPERS_AND_ANSWERS
+}
+
+model User {
+  id           String            @id @default(cuid())
+  fullName     String
+  indexNo      String
+  email        String            @unique
+  passwordHash String
+  profileImageUrl String?
+  role         UserRole          @default(STUDENT)
+  status       UserStatus        @default(ACTIVE)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  materials    Material[]
+  recordings   RecordedSession[]
+  liveSessions LiveSession[]
+  aiQueries    AiQueryLog[]
+  aiProjects   AiProject[]
+  aiSources    AiSource[]
+  aiChats      AiChat[]
+
+  @@index([role, status])
+  @@index([createdAt])
+}
+
+model AiProject {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  sources     AiSource[]
+  chats       AiChat[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+model Material {
+  id           String           @id @default(cuid())
+  title        String
+  module       String           @default("General")
+  semester     Int              @default(1)
+  academicYear String           @default("Level 1")
+  description  String?
+  category     MaterialCategory
+  fileUrl      String?
+  externalUrl  String?
+  uploaderId   String
+  uploader     User             @relation(fields: [uploaderId], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([uploaderId, createdAt])
+  @@index([semester, academicYear, createdAt])
+  @@index([module, createdAt])
+  @@index([category, createdAt])
+}
+
+model RecordedSession {
+  id          String   @id @default(cuid())
+  title       String
+  module      String   @default("General")
+  semester    Int      @default(1)
+  academicYear String  @default("Level 1")
+  description String?
+  videoUrl    String
+  uploaderId  String
+  uploader    User     @relation(fields: [uploaderId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([uploaderId, createdAt])
+  @@index([semester, academicYear, createdAt])
+  @@index([module, createdAt])
+}
+
+model LiveSession {
+  id          String   @id @default(cuid())
+  title       String
+  module      String   @default("General")
+  semester    Int      @default(1)
+  academicYear String  @default("Level 1")
+  description String?
+  streamUrl   String
+  recordingUrl String?
+  scheduledFor DateTime?
+  isLive      Boolean  @default(false)
+  startedAt   DateTime?
+  endedAt     DateTime?
+  managerId   String
+  manager     User     @relation(fields: [managerId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([managerId, createdAt])
+  @@index([isLive, scheduledFor])
+  @@index([semester, academicYear, createdAt])
+  @@index([module, createdAt])
+}
+
+model AiQueryLog {
+  id        String   @id @default(cuid())
+  prompt    String
+  response  String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AiSource {
+  id           String   @id @default(cuid())
+  title        String
+  module       String   @default("General")
+  semester     Int      @default(1)
+  academicYear String   @default("Level 1")
+  description  String?
+  contentText  String
+  fileUrl      String?
+  projectId    String?
+  project      AiProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  uploaderId   String
+  uploader     User     @relation(fields: [uploaderId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([uploaderId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([semester, academicYear, createdAt])
+  @@index([module, createdAt])
+}
+
+model AiChat {
+  id        String          @id @default(cuid())
+  title     String
+  projectId String?
+  project   AiProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  userId    String
+  user      User            @relation(fields: [userId], references: [id])
+  messages  AiChatMessage[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([userId, updatedAt])
+  @@index([projectId, updatedAt])
+}
+
+model AiChatMessage {
+  id          String   @id @default(cuid())
+  chatId       String
+  chat         AiChat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role         String
+  content      String
+  citationsJson String?
+  createdAt    DateTime @default(now())
+
+  @@index([chatId, createdAt])
+}

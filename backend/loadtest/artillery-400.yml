@@ -1,0 +1,41 @@
+config:
+  target: "{{ $processEnvironment.BASE_URL }}"
+  phases:
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 25
+      name: Ramp up
+    - duration: 240
+      arrivalRate: 25
+      rampTo: 60
+      name: Build to peak
+    - duration: 180
+      arrivalRate: 60
+      name: Sustained peak
+  defaults:
+    headers:
+      Content-Type: application/json
+
+scenarios:
+  - name: Auth + Dashboard reads
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $processEnvironment.LOADTEST_EMAIL }}"
+            password: "{{ $processEnvironment.LOADTEST_PASSWORD }}"
+          capture:
+            - json: "$.token"
+              as: "token"
+      - get:
+          url: "/api/materials?page=1&pageSize=24"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/api/live?page=1&pageSize=24"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/api/recordings?page=1&pageSize=24"
+          headers:
+            Authorization: "Bearer {{ token }}"

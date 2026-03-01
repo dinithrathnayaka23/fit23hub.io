@@ -1,0 +1,3 @@
+Here Student should be able to login,sign up and maintain an account in the platform.
+NoteBookLM like platform should be inside this.
+Then Kuppi Live Stream+Recorded Sessions Uploading+Notes+Papers+other academic materials(Basically maintaining the ACA folder inside the website with modern tech)

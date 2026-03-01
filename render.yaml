@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: fit23hub-backend
+    runtime: node
+    rootDir: backend
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm install && npm run prisma:generate
+    startCommand: npm run start:render
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: PORT
+        value: "10000"
+      - key: STORAGE_DRIVER
+        value: supabase

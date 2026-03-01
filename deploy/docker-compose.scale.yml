@@ -1,0 +1,35 @@
+services:
+  backend_1:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    env_file:
+      - ../backend/.env
+    environment:
+      - NODE_ENV=production
+      - TRUST_PROXY=1
+      - PORT=4000
+    restart: unless-stopped
+
+  backend_2:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    env_file:
+      - ../backend/.env
+    environment:
+      - NODE_ENV=production
+      - TRUST_PROXY=1
+      - PORT=4000
+    restart: unless-stopped
+
+  backend_lb:
+    image: nginx:1.27-alpine
+    depends_on:
+      - backend_1
+      - backend_2
+    volumes:
+      - ./nginx-backend-lb.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "4000:80"
+    restart: unless-stopped

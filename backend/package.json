@@ -1,0 +1,37 @@
+{
+  "name": "fit23hub-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "start:render": "npm run prisma:push && npm run start",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:push": "prisma db push",
+    "loadtest:k6": "k6 run loadtest/k6-400.js",
+    "loadtest:artillery": "npx artillery run loadtest/artillery-400.yml"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.7.0",
+    "@supabase/supabase-js": "^2.57.4",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "hpp": "^0.2.3",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "artillery": "^2.0.21",
+    "nodemon": "^3.1.7",
+    "prisma": "^6.7.0"
+  }
+}
