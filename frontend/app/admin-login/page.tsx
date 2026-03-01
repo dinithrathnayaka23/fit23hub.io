@@ -16,16 +16,16 @@ const container = {
     y: 0,
     transition: {
       duration: 0.45,
-      ease: "easeOut",
+      ease: [0.22, 1, 0.36, 1],
       staggerChildren: 0.08,
     },
   },
-};
+} as const;
 
 const item = {
   hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
-};
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
+} as const;
 
 const UOM_EMAIL_REGEX = /^[^\s@]+@uom\.lk$/i;
 

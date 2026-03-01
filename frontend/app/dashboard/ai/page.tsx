@@ -483,7 +483,7 @@ export default function AiPage() {
       setSourceModule("");
       setSourceText("");
       setSourceFile(undefined);
-      await loadSources();
+      await loadSources(activeProjectId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to upload source");
     } finally {
