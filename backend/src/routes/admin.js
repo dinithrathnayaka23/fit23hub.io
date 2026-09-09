@@ -48,15 +48,17 @@ router.get("/users", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const page = parsePage(req.query.page, 1);
   const pageSize = parsePageSize(req.query.pageSize, DEFAULT_PAGE_SIZE);
+  const baseWhere = { isSystemAccount: false };
   const where = q
     ? {
+      ...baseWhere,
       OR: [
         { fullName: { contains: q } },
         { indexNo: { contains: q } },
         { email: { contains: q } },
       ],
     }
-    : {};
+    : baseWhere;
 
   const [total, users] = await Promise.all([
     prisma.user.count({ where }),

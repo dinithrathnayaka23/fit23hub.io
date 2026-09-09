@@ -68,6 +68,7 @@ const APP_URL = (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, 
 const hashResetToken = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
 
 const VERIFY_TTL_MINUTES = Number(process.env.EMAIL_VERIFY_TTL_MINUTES || 1440);
+const DELETED_ACCOUNT_EMAIL = "deleted-account@fit23hub.local";
 
 const resendVerificationSchema = z.object({
   email: z.string().email().regex(UOM_EMAIL_REGEX, {
@@ -75,6 +76,12 @@ const resendVerificationSchema = z.object({
   }),
 });
 
+const deleteAccountSchema = z.object({
+  password: z.string().min(1, { message: "Password is required to delete your account" }),
+  confirm: z.literal("DELETE", {
+    errorMap: () => ({ message: 'Type DELETE to confirm account deletion' }),
+  }),
+});
 
 /**
  * Issues a fresh verification link, invalidating any outstanding one, and
@@ -106,6 +113,27 @@ async function issueVerificationEmail(user) {
   return result;
 }
 
+/**
+ * The tombstone that inherits shared uploads from deleted accounts, so the
+ * batch does not lose materials when one student leaves. It can never sign in:
+ * it has no usable password and is permanently suspended.
+ */
+async function getDeletedAccountUser() {
+  const existing = await prisma.user.findUnique({ where: { email: DELETED_ACCOUNT_EMAIL } });
+  if (existing) return existing;
+
+  return prisma.user.create({
+    data: {
+      email: DELETED_ACCOUNT_EMAIL,
+      fullName: "Deleted Account",
+      indexNo: "DELETED",
+      passwordHash: await bcrypt.hash(crypto.randomBytes(48).toString("hex"), 10),
+      status: "SUSPENDED",
+      suspensionReason: "System account for content from deleted users.",
+      isSystemAccount: true,
+    },
+  });
+}
 
 router.post("/register", async (req, res) => {
   try {
@@ -478,7 +506,117 @@ router.post("/resend-verification", async (req, res) => {
   }
 });
 
+router.get("/export-data", requireAuth, async (req, res) => {
+  const userId = req.user.id;
 
+  const [user, materials, recordings, liveSessions, aiProjects, aiSources, aiChats, aiQueries] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true, fullName: true, indexNo: true, email: true, profileImageUrl: true,
+        role: true, status: true, suspensionReason: true, emailVerifiedAt: true,
+        createdAt: true, updatedAt: true,
+      },
+    }),
+    prisma.material.findMany({ where: { uploaderId: userId }, orderBy: { createdAt: "asc" } }),
+    prisma.recordedSession.findMany({ where: { uploaderId: userId }, orderBy: { createdAt: "asc" } }),
+    prisma.liveSession.findMany({ where: { managerId: userId }, orderBy: { createdAt: "asc" } }),
+    prisma.aiProject.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+    prisma.aiSource.findMany({ where: { uploaderId: userId }, orderBy: { createdAt: "asc" } }),
+    prisma.aiChat.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      include: { messages: { orderBy: { createdAt: "asc" } } },
+    }),
+    prisma.aiQueryLog.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+  ]);
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  const filename = `fit23hub-data-${user.indexNo || user.id}-${new Date().toISOString().slice(0, 10)}.json`;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+  return res.send(JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    format: "FIT23Hub personal data export v1",
+    profile: user,
+    materials,
+    recordedSessions: recordings,
+    liveSessions,
+    aiProjects,
+    aiSources,
+    aiChats,
+    aiQueryLogs: aiQueries,
+  }, null, 2));
+});
+
+router.delete("/account", requireAuth, async (req, res) => {
+  try {
+    const input = deleteAccountSchema.parse(req.body);
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.isSystemAccount) {
+      return res.status(403).json({ message: "System accounts cannot be deleted." });
+    }
+
+    const isValid = await bcrypt.compare(input.password, user.passwordHash);
+    if (!isValid) {
+      return res.status(400).json({ message: "Password is incorrect" });
+    }
+
+    // Never let the platform be left without an administrator.
+    if (user.role === "ADMIN") {
+      const otherAdmins = await prisma.user.count({
+        where: { role: "ADMIN", status: "ACTIVE", isSystemAccount: false, id: { not: userId } },
+      });
+      if (otherAdmins === 0) {
+        return res.status(409).json({
+          message: "You are the last active admin. Promote another admin before deleting this account.",
+        });
+      }
+    }
+
+    const tombstone = await getDeletedAccountUser();
+
+    // Shared batch content is reassigned so other students keep access to it,
+    // while everything personally identifying or private is destroyed.
+    await prisma.$transaction([
+      prisma.material.updateMany({ where: { uploaderId: userId }, data: { uploaderId: tombstone.id } }),
+      prisma.recordedSession.updateMany({ where: { uploaderId: userId }, data: { uploaderId: tombstone.id } }),
+      prisma.liveSession.updateMany({ where: { managerId: userId }, data: { managerId: tombstone.id } }),
+      prisma.aiChatMessage.deleteMany({ where: { chat: { userId } } }),
+      prisma.aiChat.deleteMany({ where: { userId } }),
+      prisma.aiSource.deleteMany({ where: { uploaderId: userId } }),
+      prisma.aiProject.deleteMany({ where: { userId } }),
+      prisma.aiQueryLog.deleteMany({ where: { userId } }),
+      prisma.passwordResetToken.deleteMany({ where: { userId } }),
+      prisma.emailVerificationToken.deleteMany({ where: { userId } }),
+      prisma.user.delete({ where: { id: userId } }),
+    ]);
+
+    invalidateAuthUserCache(userId);
+
+    return res.json({
+      message: "Your account and personal data have been deleted. Materials you shared were transferred to an anonymous account.",
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.issues[0]?.message || "Invalid input", errors: error.issues });
+    }
+
+    // eslint-disable-next-line no-console
+    console.error("[auth] Account deletion failed:", error);
+    return res.status(500).json({ message: "Failed to delete account" });
+  }
+});
 
 router.post("/profile-image", requireAuth, upload.single("image"), async (req, res) => {
   if (!req.file) {
