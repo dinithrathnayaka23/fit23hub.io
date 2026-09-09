@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.get("/", requireAuth, async (_req, res) => {
   const [students, materials, recorded, liveNow] = await Promise.all([
-    prisma.user.count({ where: { role: "STUDENT", status: "ACTIVE" } }),
+    prisma.user.count({ where: { role: "STUDENT", status: "ACTIVE", isSystemAccount: false } }),
     prisma.material.count(),
     prisma.recordedSession.count(),
     prisma.liveSession.count({ where: { isLive: true } }),

@@ -21,10 +21,12 @@ function parsePageSize(value, fallback = DEFAULT_PAGE_SIZE) {
 router.use(requireAuth, requireRole("ADMIN"));
 
 router.get("/overview", async (_req, res) => {
+  // Exclude internal system accounts (e.g. the "Deleted Account" tombstone that
+  // inherits content from deleted users) so these totals match the user list.
   const [users, students, admins, materials, recorded, live, liveNow] = await Promise.all([
-    prisma.user.count(),
-    prisma.user.count({ where: { role: "STUDENT" } }),
-    prisma.user.count({ where: { role: "ADMIN" } }),
+    prisma.user.count({ where: { isSystemAccount: false } }),
+    prisma.user.count({ where: { role: "STUDENT", isSystemAccount: false } }),
+    prisma.user.count({ where: { role: "ADMIN", isSystemAccount: false } }),
     prisma.material.count(),
     prisma.recordedSession.count(),
     prisma.liveSession.count(),
