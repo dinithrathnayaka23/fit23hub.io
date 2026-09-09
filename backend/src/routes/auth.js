@@ -39,6 +39,13 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, { message: "Current password is required" }),
+  newPassword: z.string().regex(STRONG_PASSWORD_REGEX, {
+    message: "New password must be 10-72 chars and include uppercase, lowercase, number, and special character",
+  }),
+});
+
 router.post("/register", async (req, res) => {
   try {
     const input = registerSchema.parse(req.body);
@@ -152,6 +159,42 @@ router.post("/login", async (req, res) => {
 
 router.get("/me", requireAuth, async (req, res) => {
   return res.json({ user: req.user });
+});
+
+router.post("/change-password", requireAuth, async (req, res) => {
+  try {
+    const input = changePasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isCurrentValid = await bcrypt.compare(input.currentPassword, user.passwordHash);
+    if (!isCurrentValid) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
+
+    if (input.currentPassword === input.newPassword) {
+      return res.status(400).json({ message: "New password must be different from your current password" });
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    invalidateAuthUserCache(user.id);
+
+    return res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.issues[0]?.message || "Invalid input", errors: error.issues });
+    }
+
+    return res.status(500).json({ message: "Failed to change password" });
+  }
 });
 
 router.post("/profile-image", requireAuth, upload.single("image"), async (req, res) => {

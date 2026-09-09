@@ -69,6 +69,13 @@ export const api = {
     return request<{ user: User }>("/auth/me", {}, token);
   },
 
+  async changePassword(token: string, payload: { currentPassword: string; newPassword: string }) {
+    return request<{ message: string }>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, token);
+  },
+
   async uploadProfileImage(token: string, file: File) {
     const formData = new FormData();
     formData.append("image", file);
