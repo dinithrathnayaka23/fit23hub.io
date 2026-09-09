@@ -114,12 +114,19 @@ router.post("/login", async (req, res) => {
     }
 
     const isValid = await bcrypt.compare(input.password, user.passwordHash);
-    if (!isValid) {
-      return res.status(401).json({ message: "Invalid credentials" });
+
+    // A suspended account is blocked regardless of whether the password is correct,
+    // so the student always sees why they cannot sign in.
+    if (user.status !== "ACTIVE") {
+      return res.status(403).json({
+        message: "You are suspended by the Admin",
+        reason: user.suspensionReason || null,
+        suspended: true,
+      });
     }
 
-    if (user.status !== "ACTIVE") {
-      return res.status(403).json({ message: "Account is suspended" });
+    if (!isValid) {
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const safeUser = {

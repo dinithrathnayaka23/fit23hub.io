@@ -1,7 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { invalidateAuthUserCache, requireAuth, requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
 const DEFAULT_PAGE_SIZE = 25;
@@ -69,6 +69,7 @@ router.get("/users", async (req, res) => {
         email: true,
         role: true,
         status: true,
+        suspensionReason: true,
         createdAt: true,
       },
       orderBy: { createdAt: "desc" },
@@ -92,14 +93,32 @@ router.patch("/users/:id", async (req, res) => {
   const schema = z.object({
     role: z.enum(["STUDENT", "ADMIN"]).optional(),
     status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
+    reason: z.string().trim().max(500).optional(),
   });
 
   try {
     const payload = schema.parse(req.body);
+    const data = {};
+
+    if (payload.role) {
+      data.role = payload.role;
+    }
+
+    if (payload.status === "SUSPENDED") {
+      const reason = (payload.reason || "").trim();
+      if (reason.length < 3) {
+        return res.status(400).json({ message: "A suspension reason is required." });
+      }
+      data.status = "SUSPENDED";
+      data.suspensionReason = reason;
+    } else if (payload.status === "ACTIVE") {
+      data.status = "ACTIVE";
+      data.suspensionReason = null;
+    }
 
     const user = await prisma.user.update({
       where: { id: req.params.id },
-      data: payload,
+      data,
       select: {
         id: true,
         fullName: true,
@@ -107,9 +126,12 @@ router.patch("/users/:id", async (req, res) => {
         email: true,
         role: true,
         status: true,
+        suspensionReason: true,
         createdAt: true,
       },
     });
+
+    invalidateAuthUserCache(user.id);
 
     return res.json({ user });
   } catch (error) {
