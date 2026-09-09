@@ -10,7 +10,7 @@ import {
   faCircleNodes,
   faHouse,
   faRobot,
-  faRightFromBracket,
+  faPowerOff,
   faUsers,
   faUserCircle,
   faVideo,
@@ -62,8 +62,8 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
   return (
     <div className="h-screen overflow-hidden px-4 py-6 md:px-8">
       <div className="mx-auto flex h-full w-full max-w-7xl gap-4 md:gap-6">
-        <aside className="glass-card sticky top-6 hidden w-64 shrink-0 self-start p-4 md:block">
-          <div className="rounded-xl border border-[rgba(56,189,248,0.3)] bg-[linear-gradient(130deg,rgba(56,189,248,0.14),rgba(30,58,138,0.22))] p-3 shadow-[0_0_16px_rgba(56,189,248,0.12)]">
+        <aside className="glass-card sticky top-6 hidden max-h-[calc(100vh-3rem)] w-64 shrink-0 flex-col self-start p-4 md:flex">
+          <div className="shrink-0 rounded-xl border border-[rgba(56,189,248,0.3)] bg-[linear-gradient(130deg,rgba(56,189,248,0.14),rgba(30,58,138,0.22))] p-3 shadow-[0_0_16px_rgba(56,189,248,0.12)]">
             <p className="inline-flex items-center rounded-full border border-[rgba(56,189,248,0.4)] bg-[linear-gradient(120deg,rgba(56,189,248,0.18),rgba(30,58,138,0.24))] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#c8eeff]">
               FIT23HUB
             </p>
@@ -73,11 +73,11 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
             <p className="mt-1 text-xs text-[#bfdef2]">{admin ? "Admin Panel" : "Student Space"}</p>
           </div>
           {user && (
-            <p className="mt-2 text-xs text-[var(--muted)]">
+            <p className="mt-2 shrink-0 truncate text-xs text-[var(--muted)]">
               {user.fullName} ({user.role})
             </p>
           )}
-          <nav className="mt-6 space-y-1.5">
+          <nav className="custom-scroll mt-6 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
             {links.map((link) => {
               const active = pathname === link.href;
               return (
@@ -96,17 +96,24 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
               );
             })}
           </nav>
-          <button
-            type="button"
-            onClick={() => {
-              clearAuth();
-              window.location.href = "/";
-            }}
-            className="mx-auto mt-8 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted)] transition hover:text-white"
-          >
-            <FontAwesomeIcon icon={faRightFromBracket} className="h-3 w-3" />
-            Logout
-          </button>
+          <div className="mt-4 shrink-0 border-t border-[var(--border)] pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                clearAuth();
+                window.location.href = "/";
+              }}
+              className="group flex w-full items-center gap-2.5 rounded-lg border border-[rgba(248,113,113,0.28)] bg-[rgba(248,113,113,0.06)] px-3 py-2.5 text-sm font-medium text-[#fca5a5] transition-all duration-200 hover:border-[rgba(248,113,113,0.55)] hover:bg-[rgba(248,113,113,0.14)] hover:text-[#fecaca] hover:shadow-[0_0_16px_rgba(248,113,113,0.22)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(248,113,113,0.5)]"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[rgba(248,113,113,0.12)] transition-colors duration-200 group-hover:bg-[rgba(248,113,113,0.22)]">
+                <FontAwesomeIcon
+                  icon={faPowerOff}
+                  className="h-3.5 w-3.5 transition-transform duration-200 group-hover:scale-110"
+                />
+              </span>
+              Logout
+            </button>
+          </div>
         </aside>
 
         <main className="custom-scroll w-full space-y-4 overflow-y-auto pr-1">
