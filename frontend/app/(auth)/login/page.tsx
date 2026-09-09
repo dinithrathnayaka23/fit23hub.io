@@ -120,6 +120,11 @@ export default function LoginPage() {
               </button>
             </div>
           </motion.label>
+          <div className="flex justify-end">
+            <Link className="text-xs text-[var(--accent)] hover:underline" href="/forgot-password">
+              Forgot password?
+            </Link>
+          </div>
           {error && <p className="text-sm text-red-300">{error}</p>}
           <motion.button
             whileHover={{ y: -2, scale: 1.01 }}
