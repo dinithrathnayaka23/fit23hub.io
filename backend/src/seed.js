@@ -17,6 +17,7 @@ export async function ensureDefaultAdmin() {
       passwordHash,
       role: "ADMIN",
       status: "ACTIVE",
+      emailVerifiedAt: new Date(),
     },
     create: {
       email,
@@ -25,6 +26,7 @@ export async function ensureDefaultAdmin() {
       indexNo: "ADMIN-ROOT",
       role: "ADMIN",
       status: "ACTIVE",
+      emailVerifiedAt: new Date(),
     },
   });
 }

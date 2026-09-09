@@ -36,6 +36,8 @@ model User {
   role         UserRole          @default(STUDENT)
   status       UserStatus        @default(ACTIVE)
   suspensionReason String?
+  emailVerifiedAt DateTime?
+  isSystemAccount Boolean          @default(false)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
   materials    Material[]
@@ -46,6 +48,7 @@ model User {
   aiSources    AiSource[]
   aiChats      AiChat[]
   passwordResets PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
 
   @@index([role, status])
   @@index([createdAt])
@@ -189,6 +192,19 @@ model AiChatMessage {
 }
 
 model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
   id        String    @id @default(cuid())
   tokenHash String    @unique
   userId    String

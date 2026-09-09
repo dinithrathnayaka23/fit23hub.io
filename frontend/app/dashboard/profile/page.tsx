@@ -1,10 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faEye, faEyeSlash, faKey, faUpload, faUserGraduate } from "@fortawesome/free-solid-svg-icons";
-import { api, resolveAssetUrl } from "@/lib/api";
-import { getToken, getStoredUser, setAuth } from "@/lib/auth";
+import { faDownload, faEye, faEyeSlash, faKey, faTriangleExclamation, faUpload, faUserGraduate } from "@fortawesome/free-solid-svg-icons";
+import { api, downloadDataExport, resolveAssetUrl } from "@/lib/api";
+import { clearAuth, getToken, getStoredUser, setAuth } from "@/lib/auth";
 import type { User } from "@/lib/types";
 
 const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,72}$/;
@@ -60,7 +63,21 @@ export default function ProfilePage() {
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
 
+  const [exporting, setExporting] = useState(false);
+  const [privacyError, setPrivacyError] = useState("");
+  const [privacyNotice, setPrivacyNotice] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
   const token = useMemo(() => getToken(), []);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -133,6 +150,42 @@ export default function ProfilePage() {
       setPasswordError(err instanceof Error ? err.message : "Failed to change password");
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const onExportData = async () => {
+    if (!token) return;
+    setPrivacyError("");
+    setPrivacyNotice("");
+    setExporting(true);
+
+    try {
+      await downloadDataExport(token);
+      setPrivacyNotice("Your data export has been downloaded.");
+    } catch (err) {
+      setPrivacyError(err instanceof Error ? err.message : "Failed to export your data");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const onDeleteAccount = async () => {
+    if (!token) return;
+    setDeleteError("");
+
+    if (deleteConfirm !== "DELETE") {
+      setDeleteError('Type DELETE exactly to confirm.');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await api.deleteAccount(token, { password: deletePassword, confirm: deleteConfirm });
+      clearAuth();
+      window.location.href = "/";
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete account");
+      setDeleting(false);
     }
   };
 
@@ -240,6 +293,144 @@ export default function ProfilePage() {
           </div>
         </form>
       </section>
+
+      <section className="glass-card p-6">
+        <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-[var(--accent)]">
+          <FontAwesomeIcon icon={faDownload} className="h-3 w-3" />
+          Data &amp; Privacy
+        </p>
+        <h2 className="mt-2 text-xl font-semibold">Your Data</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Download everything FIT23Hub holds about you, or permanently delete your account. See the{" "}
+          <Link className="text-[var(--accent)] hover:underline" href="/privacy">
+            Privacy Policy
+          </Link>{" "}
+          for what we store and for how long.
+        </p>
+
+        {privacyError && <p className="mt-3 text-sm text-red-300">{privacyError}</p>}
+        {privacyNotice && <p className="mt-3 text-sm text-emerald-300">{privacyNotice}</p>}
+
+        <div className="mt-5 rounded-xl border border-[var(--border)] p-4">
+          <h3 className="text-sm font-semibold">Export my data</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            A JSON file containing your profile, uploads, AI projects, chats and query history.
+          </p>
+          <button
+            type="button"
+            onClick={onExportData}
+            disabled={exporting}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition hover:text-white disabled:opacity-60"
+          >
+            <FontAwesomeIcon icon={faDownload} className="h-4 w-4" />
+            {exporting ? "Preparing..." : "Download my data"}
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-[rgba(248,113,113,0.3)] bg-[rgba(248,113,113,0.05)] p-4">
+          <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-[#fca5a5]">
+            <FontAwesomeIcon icon={faTriangleExclamation} className="h-4 w-4" />
+            Delete my account
+          </h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Permanently erases your name, email, index number, profile photo and all AI chats,
+            sources and projects. Study materials you shared are kept for the batch but transferred
+            to an anonymous account. This cannot be undone.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteOpen(true);
+              setDeletePassword("");
+              setDeleteConfirm("");
+              setDeleteError("");
+            }}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[rgba(248,113,113,0.45)] px-3 py-2 text-sm text-[#fca5a5] transition hover:bg-[rgba(248,113,113,0.12)] hover:text-[#fecaca]"
+          >
+            <FontAwesomeIcon icon={faTriangleExclamation} className="h-4 w-4" />
+            Delete my account
+          </button>
+        </div>
+      </section>
+
+      {mounted && createPortal(
+        <AnimatePresence>
+          {deleteOpen && (
+            <motion.div
+              className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !deleting && setDeleteOpen(false)}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-account-title"
+            >
+              <motion.div
+                className="glass-card my-auto w-full max-w-md p-5 sm:p-6"
+                initial={{ opacity: 0, scale: 0.92, y: 16 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 16 }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 id="delete-account-title" className="inline-flex items-center gap-2 text-base font-semibold text-[#fca5a5] sm:text-lg">
+                  <FontAwesomeIcon icon={faTriangleExclamation} className="h-4 w-4" />
+                  Delete your account?
+                </h2>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  This is permanent. Consider downloading your data first.
+                </p>
+
+                <div className="mt-4 space-y-3">
+                  <PasswordField
+                    label="Confirm your password"
+                    value={deletePassword}
+                    onChange={setDeletePassword}
+                    placeholder="Your current password"
+                    autoComplete="current-password"
+                  />
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-[var(--muted)]">
+                      Type <span className="font-mono text-white">DELETE</span> to confirm
+                    </span>
+                    <input
+                      type="text"
+                      value={deleteConfirm}
+                      onChange={(e) => setDeleteConfirm(e.target.value)}
+                      placeholder="DELETE"
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                    />
+                  </label>
+                </div>
+
+                {deleteError && <p className="mt-3 text-sm text-red-300">{deleteError}</p>}
+
+                <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteOpen(false)}
+                    disabled={deleting}
+                    className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition hover:text-white disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onDeleteAccount}
+                    disabled={deleting || deleteConfirm !== "DELETE" || !deletePassword}
+                    className="rounded-lg bg-red-500/90 px-3 py-2 text-sm text-white transition hover:bg-red-500 disabled:opacity-50"
+                  >
+                    {deleting ? "Deleting..." : "Permanently delete"}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   );
 }

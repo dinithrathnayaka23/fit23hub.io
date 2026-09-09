@@ -52,7 +52,13 @@ async function request<T>(
 
 export const api = {
   async register(input: { fullName: string; indexNo: string; email: string; password: string }) {
-    return request<{ user: User; token: string }>("/auth/register", {
+    return request<{
+      message: string;
+      email: string;
+      requiresVerification: boolean;
+      previewUrl?: string | null;
+      verifyUrl?: string;
+    }>("/auth/register", {
       method: "POST",
       body: JSON.stringify(input),
     });
@@ -94,6 +100,33 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  async verifyEmailToken(token: string) {
+    return request<{ valid: boolean; email: string; alreadyVerified: boolean }>(
+      `/auth/verify-email/${encodeURIComponent(token)}`,
+    );
+  },
+
+  async verifyEmail(token: string) {
+    return request<{ message: string; email: string }>("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+
+  async resendVerification(email: string) {
+    return request<{ message: string; previewUrl?: string | null; verifyUrl?: string }>(
+      "/auth/resend-verification",
+      { method: "POST", body: JSON.stringify({ email }) },
+    );
+  },
+
+  async deleteAccount(token: string, payload: { password: string; confirm: string }) {
+    return request<{ message: string }>("/auth/account", {
+      method: "DELETE",
+      body: JSON.stringify(payload),
+    }, token);
   },
 
   async uploadProfileImage(token: string, file: File) {
@@ -401,6 +434,34 @@ export const api = {
     }, token);
   },
 };
+
+/**
+ * Streams the personal-data export to a file. This bypasses request() because
+ * the endpoint returns an attachment rather than a JSON body.
+ */
+export async function downloadDataExport(token: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/export-data`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(data.message || "Failed to export your data", response.status, data);
+  }
+
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = match?.[1] || "fit23hub-data-export.json";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 export function resolveAssetUrl(url: string | null | undefined): string {
   if (!url) return "";

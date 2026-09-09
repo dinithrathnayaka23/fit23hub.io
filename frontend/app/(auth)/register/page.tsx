@@ -2,12 +2,10 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faEye, faEyeSlash, faIdCard, faUserPlus } from "@fortawesome/free-solid-svg-icons";
+import { faEnvelopeCircleCheck, faEye, faEyeSlash, faIdCard, faUserPlus } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
-import { setAuth } from "@/lib/auth";
 
 const container = {
   hidden: { opacity: 0, y: 20 },
@@ -36,7 +34,6 @@ function hasFirstAndLastName(value: string) {
 }
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [indexNo, setIndexNo] = useState("");
   const [email, setEmail] = useState("");
@@ -46,6 +43,10 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendNotice, setResendNotice] = useState("");
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -79,12 +80,26 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const result = await api.register({ fullName, indexNo, email, password });
-      setAuth(result.token, result.user);
-      router.push("/dashboard");
+      setPreviewUrl(result.previewUrl ?? null);
+      setRegisteredEmail(result.email || email);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onResend = async () => {
+    setResendNotice("");
+    setResending(true);
+    try {
+      const result = await api.resendVerification(registeredEmail);
+      setPreviewUrl(result.previewUrl ?? null);
+      setResendNotice("Verification email sent again. Check your inbox and spam folder.");
+    } catch (err) {
+      setResendNotice(err instanceof Error ? err.message : "Could not resend the verification email");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -103,6 +118,54 @@ export default function RegisterPage() {
         <motion.h1 variants={item} className="mt-2 text-2xl font-semibold">
           Create Student Account
         </motion.h1>
+
+        {registeredEmail ? (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-5"
+          >
+            <div className="flex items-start gap-3 rounded-lg border border-[rgba(52,211,153,0.35)] bg-[rgba(52,211,153,0.08)] p-4 text-sm text-emerald-200">
+              <FontAwesomeIcon icon={faEnvelopeCircleCheck} className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Account created. We sent a verification link to{" "}
+                <span className="text-white">{registeredEmail}</span>. Open it to activate your
+                account &mdash; you cannot sign in until you do.
+              </span>
+            </div>
+            <p className="mt-3 text-xs text-[var(--muted)]">
+              The link expires in 24 hours. Check your spam folder if it has not arrived.
+            </p>
+            {resendNotice && <p className="mt-3 text-sm text-[var(--accent)]">{resendNotice}</p>}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onResend}
+                disabled={resending}
+                className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition hover:text-white disabled:opacity-60"
+              >
+                {resending ? "Sending..." : "Resend verification email"}
+              </button>
+              <Link
+                className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm hover:bg-[#2a4fb5]"
+                href="/login"
+              >
+                Go to sign in
+              </Link>
+            </div>
+            {previewUrl && (
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-block text-xs text-[var(--accent)] underline"
+              >
+                Dev only: open the sent email preview
+              </a>
+            )}
+          </motion.div>
+        ) : (
         <motion.form variants={item} className="mt-6 grid gap-4 md:grid-cols-2" onSubmit={onSubmit}>
           <motion.input whileFocus={{ scale: 1.01 }} className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 outline-none focus:border-[var(--accent)]" type="text" placeholder="Full name (First Last)" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
           <motion.input whileFocus={{ scale: 1.01 }} className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 outline-none focus:border-[var(--accent)]" type="text" placeholder="Index number (235091X)" value={indexNo} onChange={(e) => setIndexNo(e.target.value.toUpperCase().trim())} required />
@@ -143,7 +206,15 @@ export default function RegisterPage() {
             {loading ? "Registering..." : "Register Account"}
             <FontAwesomeIcon icon={faUserPlus} className="h-4 w-4" />
           </motion.button>
+          <p className="text-xs text-[var(--muted)] md:col-span-2">
+            By registering you agree to how we handle your data, described in our{" "}
+            <Link className="text-[var(--accent)] hover:underline" href="/privacy">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </motion.form>
+        )}
         <motion.p variants={item} className="mt-4 inline-flex items-center gap-2 text-sm text-[var(--muted)]">
           <FontAwesomeIcon icon={faIdCard} className="h-4 w-4" />
           Already registered? <Link className="text-[var(--accent)]" href="/login">Sign in</Link>
