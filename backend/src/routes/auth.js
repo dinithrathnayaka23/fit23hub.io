@@ -1,11 +1,13 @@
 import express from "express";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { signToken } from "../utils/jwt.js";
 import { invalidateAuthUserCache, requireAuth } from "../middleware/auth.js";
 import { upload } from "../utils/upload.js";
 import { storeUploadedFile } from "../utils/storage.js";
+import { sendPasswordResetEmail } from "../utils/mailer.js";
 
 const router = express.Router();
 
@@ -45,6 +47,25 @@ const changePasswordSchema = z.object({
     message: "New password must be 10-72 chars and include uppercase, lowercase, number, and special character",
   }),
 });
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email().regex(UOM_EMAIL_REGEX, {
+    message: "Email must be in @uom.lk domain",
+  }),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(32, { message: "Reset token is missing or malformed" }),
+  newPassword: z.string().regex(STRONG_PASSWORD_REGEX, {
+    message: "Password must be 10-72 chars and include uppercase, lowercase, number, and special character",
+  }),
+});
+
+const RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 60);
+const APP_URL = (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+// The raw token travels in the email link; only its SHA-256 digest is stored,
+// so a leaked database cannot be used to take over accounts.
+const hashResetToken = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
 
 router.post("/register", async (req, res) => {
   try {
@@ -194,6 +215,113 @@ router.post("/change-password", requireAuth, async (req, res) => {
     }
 
     return res.status(500).json({ message: "Failed to change password" });
+  }
+});
+
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const input = forgotPasswordSchema.parse(req.body);
+    const email = input.email.toLowerCase();
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // Always answer the same way so this endpoint cannot be used to discover
+    // which addresses have accounts.
+    const genericResponse = {
+      message: "If that email belongs to a FIT23Hub account, a reset link is on its way.",
+    };
+
+    if (!user || user.status !== "ACTIVE") {
+      return res.json(genericResponse);
+    }
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + RESET_TTL_MINUTES * 60 * 1000);
+
+    // Any previously issued link becomes useless the moment a new one is requested.
+    await prisma.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
+    await prisma.passwordResetToken.create({
+      data: { tokenHash: hashResetToken(rawToken), userId: user.id, expiresAt },
+    });
+
+    const resetUrl = `${APP_URL}/reset-password?token=${rawToken}`;
+
+    try {
+      const { previewUrl } = await sendPasswordResetEmail({
+        to: user.email,
+        fullName: user.fullName,
+        resetUrl,
+        expiryMinutes: RESET_TTL_MINUTES,
+      });
+
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.log(`[auth] Reset link for ${user.email}: ${resetUrl}`);
+        return res.json({ ...genericResponse, previewUrl, resetUrl });
+      }
+    } catch (mailError) {
+      // eslint-disable-next-line no-console
+      console.error("[auth] Failed to send password reset email:", mailError);
+      return res.status(502).json({ message: "Could not send the reset email. Please try again later." });
+    }
+
+    return res.json(genericResponse);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.issues[0]?.message || "Invalid input", errors: error.issues });
+    }
+
+    return res.status(500).json({ message: "Failed to start password reset" });
+  }
+});
+
+router.get("/reset-password/:token", async (req, res) => {
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash: hashResetToken(String(req.params.token || "")) },
+    include: { user: { select: { email: true, fullName: true, status: true } } },
+  });
+
+  if (!record || record.usedAt || record.expiresAt <= new Date() || record.user.status !== "ACTIVE") {
+    return res.status(400).json({ valid: false, message: "This reset link is invalid or has expired." });
+  }
+
+  return res.json({ valid: true, email: record.user.email, fullName: record.user.fullName });
+});
+
+router.post("/reset-password", async (req, res) => {
+  try {
+    const input = resetPasswordSchema.parse(req.body);
+
+    const record = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash: hashResetToken(input.token) },
+      include: { user: true },
+    });
+
+    if (!record || record.usedAt || record.expiresAt <= new Date() || record.user.status !== "ACTIVE") {
+      return res.status(400).json({ message: "This reset link is invalid or has expired." });
+    }
+
+    const isSamePassword = await bcrypt.compare(input.newPassword, record.user.passwordHash);
+    if (isSamePassword) {
+      return res.status(400).json({ message: "New password must be different from your current password" });
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, 10);
+
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+      prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+      prisma.passwordResetToken.deleteMany({ where: { userId: record.userId, usedAt: null } }),
+    ]);
+
+    invalidateAuthUserCache(record.userId);
+
+    return res.json({ message: "Password reset successfully. You can now sign in." });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.issues[0]?.message || "Invalid input", errors: error.issues });
+    }
+
+    return res.status(500).json({ message: "Failed to reset password" });
   }
 });
 
