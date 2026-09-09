@@ -45,6 +45,7 @@ model User {
   aiProjects   AiProject[]
   aiSources    AiSource[]
   aiChats      AiChat[]
+  passwordResets PasswordResetToken[]
 
   @@index([role, status])
   @@index([createdAt])
@@ -185,4 +186,17 @@ model AiChatMessage {
   createdAt    DateTime @default(now())
 
   @@index([chatId, createdAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }
