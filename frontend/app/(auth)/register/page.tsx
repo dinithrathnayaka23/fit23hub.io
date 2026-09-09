@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faIdCard, faUserPlus } from "@fortawesome/free-solid-svg-icons";
+import { faEye, faEyeSlash, faIdCard, faUserPlus } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
@@ -42,6 +42,8 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -105,8 +107,30 @@ export default function RegisterPage() {
           <motion.input whileFocus={{ scale: 1.01 }} className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 outline-none focus:border-[var(--accent)]" type="text" placeholder="Full name (First Last)" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
           <motion.input whileFocus={{ scale: 1.01 }} className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 outline-none focus:border-[var(--accent)]" type="text" placeholder="Index number (235091X)" value={indexNo} onChange={(e) => setIndexNo(e.target.value.toUpperCase().trim())} required />
           <motion.input whileFocus={{ scale: 1.01 }} className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 outline-none focus:border-[var(--accent)] md:col-span-2" type="email" placeholder="Student email (@uom.lk)" value={email} onChange={(e) => setEmail(e.target.value.trim())} required />
-          <motion.input whileFocus={{ scale: 1.01 }} className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 outline-none focus:border-[var(--accent)]" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          <motion.input whileFocus={{ scale: 1.01 }} className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 outline-none focus:border-[var(--accent)]" type="password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+          <div className="relative">
+            <motion.input whileFocus={{ scale: 1.01 }} className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 pr-10 outline-none focus:border-[var(--accent)]" type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-[var(--muted)] transition hover:text-white"
+            >
+              <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="relative">
+            <motion.input whileFocus={{ scale: 1.01 }} className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 pr-10 outline-none focus:border-[var(--accent)]" type={showConfirmPassword ? "text" : "password"} placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((v) => !v)}
+              aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              aria-pressed={showConfirmPassword}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-[var(--muted)] transition hover:text-white"
+            >
+              <FontAwesomeIcon icon={showConfirmPassword ? faEyeSlash : faEye} className="h-4 w-4" />
+            </button>
+          </div>
           <p className="text-xs text-[var(--muted)] md:col-span-2">Use at least 10 characters including uppercase, lowercase, number, and symbol.</p>
           {error && <p className="text-sm text-red-300 md:col-span-2">{error}</p>}
           <motion.button
