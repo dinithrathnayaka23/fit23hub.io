@@ -120,3 +120,78 @@ export async function sendPasswordResetEmail({ to, fullName, resetUrl, expiryMin
 
   return { messageId: info.messageId, previewUrl };
 }
+
+function emailShell({ heading, intro, ctaLabel, ctaUrl, footNote }) {
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:24px;background:#0b1220;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#e5e7eb;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#111827;border:1px solid rgba(56,189,248,0.22);border-radius:16px;">
+      <tr>
+        <td style="padding:28px;">
+          <p style="margin:0;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#38bdf8;">FIT23Hub</p>
+          <h1 style="margin:10px 0 0;font-size:22px;color:#ffffff;">${heading}</h1>
+          <p style="margin:16px 0 0;font-size:14px;line-height:22px;color:#9ca3af;">${intro}</p>
+          <p style="margin:26px 0;">
+            <a href="${ctaUrl}" style="display:inline-block;background:#1e3a8a;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:14px;font-weight:600;">
+              ${ctaLabel}
+            </a>
+          </p>
+          <p style="margin:0;font-size:12px;line-height:20px;color:#9ca3af;">${footNote}</p>
+          <p style="margin:20px 0 0;font-size:11px;line-height:18px;color:#6b7280;word-break:break-all;">
+            Button not working? Paste this into your browser:<br />${ctaUrl}
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function verificationEmailTemplate({ fullName, verifyUrl, expiryMinutes }) {
+  const safeName = String(fullName || "there").split(/\s+/)[0];
+
+  const text = [
+    `Hi ${safeName},`,
+    "",
+    "Welcome to FIT23Hub. Confirm this email address to activate your account:",
+    "",
+    verifyUrl,
+    "",
+    `This link expires in ${expiryMinutes} minutes and can only be used once.`,
+    "If you did not create a FIT23Hub account, you can safely ignore this email.",
+    "",
+    "- FIT23Hub",
+  ].join("\n");
+
+  const html = emailShell({
+    heading: "Confirm your email",
+    intro: `Hi ${safeName}, welcome to FIT23Hub. Confirm this email address to activate your student account.`,
+    ctaLabel: "Verify my email",
+    ctaUrl: verifyUrl,
+    footNote: `This link expires in ${expiryMinutes} minutes and can only be used once. If you did not create a FIT23Hub account, ignore this email.`,
+  });
+
+  return { text, html };
+}
+
+export async function sendVerificationEmail({ to, fullName, verifyUrl, expiryMinutes }) {
+  const transporter = await getTransporter();
+  const { text, html } = verificationEmailTemplate({ fullName, verifyUrl, expiryMinutes });
+
+  const info = await transporter.sendMail({
+    from: mailFrom,
+    to,
+    subject: "Verify your FIT23Hub email",
+    text,
+    html,
+  });
+
+  const previewUrl = nodemailer.getTestMessageUrl(info) || null;
+
+  if (previewUrl) {
+    // eslint-disable-next-line no-console
+    console.log(`[mailer] Verification preview for ${to}: ${previewUrl}`);
+  }
+
+  return { messageId: info.messageId, previewUrl };
+}

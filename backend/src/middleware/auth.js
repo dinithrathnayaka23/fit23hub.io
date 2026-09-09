@@ -48,11 +48,17 @@ export async function requireAuth(req, res, next) {
         profileImageUrl: true,
         role: true,
         status: true,
+        emailVerifiedAt: true,
+        isSystemAccount: true,
       },
     });
 
-    if (!user || user.status !== "ACTIVE") {
+    if (!user || user.status !== "ACTIVE" || user.isSystemAccount) {
       return res.status(401).json({ message: "User is not active" });
+    }
+
+    if (!user.emailVerifiedAt) {
+      return res.status(403).json({ message: "Verify your email address to continue.", requiresVerification: true });
     }
 
     setCachedUser(user);

@@ -7,7 +7,7 @@ import { signToken } from "../utils/jwt.js";
 import { invalidateAuthUserCache, requireAuth } from "../middleware/auth.js";
 import { upload } from "../utils/upload.js";
 import { storeUploadedFile } from "../utils/storage.js";
-import { sendPasswordResetEmail } from "../utils/mailer.js";
+import { sendPasswordResetEmail, sendVerificationEmail } from "../utils/mailer.js";
 
 const router = express.Router();
 
@@ -67,6 +67,46 @@ const APP_URL = (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, 
 // so a leaked database cannot be used to take over accounts.
 const hashResetToken = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
 
+const VERIFY_TTL_MINUTES = Number(process.env.EMAIL_VERIFY_TTL_MINUTES || 1440);
+
+const resendVerificationSchema = z.object({
+  email: z.string().email().regex(UOM_EMAIL_REGEX, {
+    message: "Email must be in @uom.lk domain",
+  }),
+});
+
+
+/**
+ * Issues a fresh verification link, invalidating any outstanding one, and
+ * emails it. Returns the mailer result so dev responses can expose a preview.
+ */
+async function issueVerificationEmail(user) {
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + VERIFY_TTL_MINUTES * 60 * 1000);
+
+  await prisma.emailVerificationToken.deleteMany({ where: { userId: user.id, usedAt: null } });
+  await prisma.emailVerificationToken.create({
+    data: { tokenHash: hashResetToken(rawToken), userId: user.id, expiresAt },
+  });
+
+  const verifyUrl = `${APP_URL}/verify-email?token=${rawToken}`;
+  const result = await sendVerificationEmail({
+    to: user.email,
+    fullName: user.fullName,
+    verifyUrl,
+    expiryMinutes: VERIFY_TTL_MINUTES,
+  });
+
+  if (process.env.NODE_ENV !== "production") {
+    // eslint-disable-next-line no-console
+    console.log(`[auth] Verification link for ${user.email}: ${verifyUrl}`);
+    return { ...result, verifyUrl };
+  }
+
+  return result;
+}
+
+
 router.post("/register", async (req, res) => {
   try {
     const input = registerSchema.parse(req.body);
@@ -90,6 +130,7 @@ router.post("/register", async (req, res) => {
           indexNo: input.indexNo,
           passwordHash,
           status: "ACTIVE",
+          emailVerifiedAt: null,
         },
         select: {
           id: true,
@@ -121,8 +162,30 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    const token = signToken(user);
-    return res.status(201).json({ user, token });
+    // No session is issued yet - the account is inert until the emailed link
+    // is opened, which proves the student controls that @uom.lk mailbox.
+    try {
+      const { previewUrl, verifyUrl } = await issueVerificationEmail(user);
+      const body = {
+        message: "Account created. Check your university email for the verification link.",
+        email: user.email,
+        requiresVerification: true,
+      };
+
+      if (process.env.NODE_ENV !== "production") {
+        return res.status(201).json({ ...body, previewUrl, verifyUrl });
+      }
+
+      return res.status(201).json(body);
+    } catch (mailError) {
+      // eslint-disable-next-line no-console
+      console.error("[auth] Failed to send verification email:", mailError);
+      return res.status(502).json({
+        message: "Account created, but the verification email could not be sent. Use 'Resend verification email' to try again.",
+        email: user.email,
+        requiresVerification: true,
+      });
+    }
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: "Invalid input", errors: error.issues });
@@ -155,6 +218,14 @@ router.post("/login", async (req, res) => {
 
     if (!isValid) {
       return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    if (!user.emailVerifiedAt) {
+      return res.status(403).json({
+        message: "Verify your email address before signing in.",
+        email: user.email,
+        requiresVerification: true,
+      });
     }
 
     const safeUser = {
@@ -324,6 +395,90 @@ router.post("/reset-password", async (req, res) => {
     return res.status(500).json({ message: "Failed to reset password" });
   }
 });
+
+router.get("/verify-email/:token", async (req, res) => {
+  const record = await prisma.emailVerificationToken.findUnique({
+    where: { tokenHash: hashResetToken(String(req.params.token || "")) },
+    include: { user: { select: { email: true, emailVerifiedAt: true } } },
+  });
+
+  if (!record || record.usedAt || record.expiresAt <= new Date()) {
+    return res.status(400).json({ valid: false, message: "This verification link is invalid or has expired." });
+  }
+
+  return res.json({ valid: true, email: record.user.email, alreadyVerified: Boolean(record.user.emailVerifiedAt) });
+});
+
+router.post("/verify-email", async (req, res) => {
+  try {
+    const token = String(req.body?.token || "");
+    if (token.length < 32) {
+      return res.status(400).json({ message: "Verification token is missing or malformed" });
+    }
+
+    const record = await prisma.emailVerificationToken.findUnique({
+      where: { tokenHash: hashResetToken(token) },
+      include: { user: true },
+    });
+
+    if (!record || record.usedAt || record.expiresAt <= new Date()) {
+      return res.status(400).json({ message: "This verification link is invalid or has expired." });
+    }
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: record.userId },
+        data: { emailVerifiedAt: record.user.emailVerifiedAt || new Date() },
+      }),
+      prisma.emailVerificationToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+      prisma.emailVerificationToken.deleteMany({ where: { userId: record.userId, usedAt: null } }),
+    ]);
+
+    invalidateAuthUserCache(record.userId);
+
+    return res.json({ message: "Email verified. You can now sign in.", email: record.user.email });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to verify email" });
+  }
+});
+
+router.post("/resend-verification", async (req, res) => {
+  try {
+    const input = resendVerificationSchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
+
+    // Same answer whether or not the address exists, so this cannot be used to
+    // enumerate accounts.
+    const genericResponse = {
+      message: "If that email needs verification, a new link is on its way.",
+    };
+
+    if (!user || user.emailVerifiedAt || user.status !== "ACTIVE" || user.isSystemAccount) {
+      return res.json(genericResponse);
+    }
+
+    try {
+      const { previewUrl, verifyUrl } = await issueVerificationEmail(user);
+      if (process.env.NODE_ENV !== "production") {
+        return res.json({ ...genericResponse, previewUrl, verifyUrl });
+      }
+    } catch (mailError) {
+      // eslint-disable-next-line no-console
+      console.error("[auth] Failed to resend verification email:", mailError);
+      return res.status(502).json({ message: "Could not send the verification email. Please try again later." });
+    }
+
+    return res.json(genericResponse);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.issues[0]?.message || "Invalid input", errors: error.issues });
+    }
+
+    return res.status(500).json({ message: "Failed to resend verification email" });
+  }
+});
+
+
 
 router.post("/profile-image", requireAuth, upload.single("image"), async (req, res) => {
   if (!req.file) {
