@@ -76,6 +76,26 @@ export const api = {
     }, token);
   },
 
+  async forgotPassword(email: string) {
+    return request<{ message: string; previewUrl?: string | null; resetUrl?: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async verifyResetToken(token: string) {
+    return request<{ valid: boolean; email: string; fullName: string }>(
+      `/auth/reset-password/${encodeURIComponent(token)}`,
+    );
+  },
+
+  async resetPassword(payload: { token: string; newPassword: string }) {
+    return request<{ message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   async uploadProfileImage(token: string, file: File) {
     const formData = new FormData();
     formData.append("image", file);
