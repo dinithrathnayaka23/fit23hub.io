@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRightToBracket, faEnvelope, faEye, faEyeSlash, faLock } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRightToBracket, faEnvelope, faEnvelopeCircleCheck, faEye, faEyeSlash, faLock } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
 import { api, ApiError } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
@@ -38,11 +38,17 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [suspended, setSuspended] = useState<{ message: string; reason: string | null } | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
+  const [resending, setResending] = useState(false);
+  const [resendNotice, setResendNotice] = useState("");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
     setSuspended(null);
+    setUnverifiedEmail("");
+    setResendNotice("");
 
     if (!UOM_EMAIL_REGEX.test(email)) {
       setError("Email must use @uom.lk domain.");
@@ -61,11 +67,27 @@ export default function LoginPage() {
           message: typeof err.payload.message === "string" ? err.payload.message : "You are suspended by the Admin",
           reason: typeof err.payload.reason === "string" ? err.payload.reason : null,
         });
+      } else if (err instanceof ApiError && err.payload?.requiresVerification) {
+        setUnverifiedEmail(typeof err.payload.email === "string" ? err.payload.email : email);
       } else {
         setError(err instanceof Error ? err.message : "Login failed");
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onResendVerification = async () => {
+    setResendNotice("");
+    setResending(true);
+    try {
+      const result = await api.resendVerification(unverifiedEmail);
+      setPreviewUrl(result.previewUrl ?? null);
+      setResendNotice("Verification email sent. Check your inbox and spam folder.");
+    } catch (err) {
+      setResendNotice(err instanceof Error ? err.message : "Could not resend the verification email");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -125,6 +147,36 @@ export default function LoginPage() {
               Forgot password?
             </Link>
           </div>
+          {unverifiedEmail && (
+            <div className="rounded-lg border border-[rgba(250,204,21,0.35)] bg-[rgba(250,204,21,0.08)] p-3 text-sm text-amber-100">
+              <p className="flex items-start gap-2">
+                <FontAwesomeIcon icon={faEnvelopeCircleCheck} className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Verify <span className="text-white">{unverifiedEmail}</span> before signing in. We
+                  emailed you a link when you registered.
+                </span>
+              </p>
+              {resendNotice && <p className="mt-2 text-xs text-[var(--accent)]">{resendNotice}</p>}
+              <button
+                type="button"
+                onClick={onResendVerification}
+                disabled={resending}
+                className="mt-2 rounded-lg border border-[rgba(250,204,21,0.4)] px-3 py-1.5 text-xs text-amber-100 transition hover:bg-[rgba(250,204,21,0.14)] disabled:opacity-60"
+              >
+                {resending ? "Sending..." : "Resend verification email"}
+              </button>
+              {previewUrl && (
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 block text-xs text-[var(--accent)] underline"
+                >
+                  Dev only: open the sent email preview
+                </a>
+              )}
+            </div>
+          )}
           {error && <p className="text-sm text-red-300">{error}</p>}
           <motion.button
             whileHover={{ y: -2, scale: 1.01 }}

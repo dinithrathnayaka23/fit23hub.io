@@ -52,7 +52,13 @@ async function request<T>(
 
 export const api = {
   async register(input: { fullName: string; indexNo: string; email: string; password: string }) {
-    return request<{ user: User; token: string }>("/auth/register", {
+    return request<{
+      message: string;
+      email: string;
+      requiresVerification: boolean;
+      previewUrl?: string | null;
+      verifyUrl?: string;
+    }>("/auth/register", {
       method: "POST",
       body: JSON.stringify(input),
     });
@@ -95,6 +101,27 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+
+  async verifyEmailToken(token: string) {
+    return request<{ valid: boolean; email: string; alreadyVerified: boolean }>(
+      `/auth/verify-email/${encodeURIComponent(token)}`,
+    );
+  },
+
+  async verifyEmail(token: string) {
+    return request<{ message: string; email: string }>("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+
+  async resendVerification(email: string) {
+    return request<{ message: string; previewUrl?: string | null; verifyUrl?: string }>(
+      "/auth/resend-verification",
+      { method: "POST", body: JSON.stringify({ email }) },
+    );
+  },
+
 
   async uploadProfileImage(token: string, file: File) {
     const formData = new FormData();
@@ -401,6 +428,7 @@ export const api = {
     }, token);
   },
 };
+
 
 export function resolveAssetUrl(url: string | null | undefined): string {
   if (!url) return "";
