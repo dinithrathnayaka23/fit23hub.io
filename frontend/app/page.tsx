@@ -50,6 +50,12 @@ const batchPhotos = [
     image: "/thirdsembatchphoto.jpeg",
     alt: "FIT23 students gathered for the third semester batch photograph",
   },
+  {
+    title: "Fourth Semester Batch Photo",
+    date: "May 24, 2026",
+    image: "/fourthsembatchphoto.jpeg",
+    alt: "FIT23 batch gathered on the faculty grounds at the end of semester 4, with a giant FIT23 sign behind them",
+  },
 ];
 
 export default function Home() {
@@ -110,20 +116,20 @@ export default function Home() {
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">Our Journey</p>
-                <h2 className="mt-1 text-2xl font-semibold">Three Semesters, One Batch</h2>
+                <h2 className="mt-1 text-2xl font-semibold">Four Semesters, One Batch</h2>
                 <p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">
-                  These photographs represent our shared progress from semester 1 to semester 3 as FIT23.
+                  These photographs represent our shared progress from semester 1 to semester 4 as FIT23.
                 </p>
               </div>
               <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--muted)]">
-                3 official batch photos
+                4 official batch photos
               </span>
             </div>
           </FadeIn>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {batchPhotos.map((entry, index) => (
-              <FadeIn key={entry.title} delay={0.04 * index}>
-                <GalleryCard {...entry} />
+              <FadeIn key={entry.title} delay={0.04 * index} className="h-full">
+                <GalleryCard {...entry} compact />
               </FadeIn>
             ))}
           </div>
