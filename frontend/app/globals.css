@@ -58,29 +58,49 @@ h4 {
   animation: lift 5s ease-in-out infinite;
 }
 
-.feature-card {
-  transform-style: preserve-3d;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+/*
+ * Animated conic-gradient border.
+ * The card paints two backgrounds: an opaque-ish panel clipped to padding-box,
+ * and a rotating conic gradient clipped to border-box, which is only visible
+ * through the 1px transparent border. Registering --border-angle with @property
+ * is what makes the angle animatable; browsers without @property support fall
+ * back to the static 0deg value declared on the element.
+ */
+@property --border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
-.feature-card:hover {
-  border-color: rgba(56, 189, 248, 0.5);
-  box-shadow: 0 14px 36px rgba(13, 24, 52, 0.45);
+@keyframes border-angle-spin {
+  to {
+    --border-angle: 360deg;
+  }
 }
 
-.feature-card::after {
-  content: "";
-  position: absolute;
-  inset: auto -30% -65% -30%;
-  height: 120px;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.22), transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
+.gradient-border-card {
+  --border-angle: 0deg;
+  position: relative;
+  border: 1px solid transparent;
+  border-radius: 1rem;
+  /* Panel is fully opaque so the conic gradient is visible only in the border. */
+  background:
+    linear-gradient(150deg, #0d1524, #111827 55%, #0e1a2e) padding-box,
+    conic-gradient(
+      from var(--border-angle),
+      rgba(56, 189, 248, 0.22) 80%,
+      var(--primary) 86%,
+      #8de6ff 90%,
+      var(--accent) 94%,
+      rgba(56, 189, 248, 0.22)
+    ) border-box;
+  animation: border-angle-spin 4s linear infinite;
 }
 
-.feature-card:hover::after {
-  opacity: 1;
+@media (prefers-reduced-motion: reduce) {
+  .gradient-border-card {
+    animation: none;
+  }
 }
 
 @keyframes lift {

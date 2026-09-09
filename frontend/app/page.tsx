@@ -100,13 +100,12 @@ export default function Home() {
         </header>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {features.map((feature, index) => (
+          {features.map((feature) => (
             <LandingFeatureCard
               key={feature.title}
               title={feature.title}
               description={feature.description}
               icon={feature.icon}
-              delay={0.08 * index}
             />
           ))}
         </section>
