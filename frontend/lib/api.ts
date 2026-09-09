@@ -122,6 +122,12 @@ export const api = {
     );
   },
 
+  async deleteAccount(token: string, payload: { password: string; confirm: string }) {
+    return request<{ message: string }>("/auth/account", {
+      method: "DELETE",
+      body: JSON.stringify(payload),
+    }, token);
+  },
 
   async uploadProfileImage(token: string, file: File) {
     const formData = new FormData();
@@ -429,6 +435,33 @@ export const api = {
   },
 };
 
+/**
+ * Streams the personal-data export to a file. This bypasses request() because
+ * the endpoint returns an attachment rather than a JSON body.
+ */
+export async function downloadDataExport(token: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/export-data`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(data.message || "Failed to export your data", response.status, data);
+  }
+
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = match?.[1] || "fit23hub-data-export.json";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 export function resolveAssetUrl(url: string | null | undefined): string {
   if (!url) return "";

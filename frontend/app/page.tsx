@@ -135,7 +135,12 @@ export default function Home() {
         </section>
 
         <footer className="pb-2 pt-4 text-center text-sm text-[var(--muted)]">
-          Built with ❤️ for Batch23.
+          <p>Built with ❤️ for Batch23.</p>
+          <p className="mt-1">
+            <Link className="text-[var(--accent)] hover:underline" href="/privacy">
+              Privacy Policy
+            </Link>
+          </p>
         </footer>
       </div>
     </div>
