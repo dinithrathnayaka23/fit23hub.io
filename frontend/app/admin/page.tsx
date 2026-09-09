@@ -1,26 +1,94 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faArrowsRotate } from "@fortawesome/free-solid-svg-icons";
 import StatCard from "@/components/ui/StatCard";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
+const REFRESH_INTERVAL_MS = 20_000;
+
 export default function AdminPage() {
   const [stats, setStats] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const token = useMemo(() => getToken(), []);
+  const inFlight = useRef(false);
 
-  useEffect(() => {
-    if (!token) return;
-
-    api.adminOverview(token)
-      .then((result) => setStats(result.stats))
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load admin overview"));
+  const load = useCallback(async () => {
+    if (!token || inFlight.current) return;
+    inFlight.current = true;
+    setRefreshing(true);
+    try {
+      const result = await api.adminOverview(token);
+      setStats(result.stats);
+      setUpdatedAt(Date.now());
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load admin overview");
+    } finally {
+      inFlight.current = false;
+      setRefreshing(false);
+    }
   }, [token]);
+
+  // Initial load + poll on an interval so counts follow registrations and
+  // deletions without a manual refresh.
+  useEffect(() => {
+    load();
+    const id = setInterval(load, REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [load]);
+
+  // Refetch the moment the admin returns to the tab/window.
+  useEffect(() => {
+    const onFocus = () => load();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load]);
+
+  // Keeps the "updated Ns ago" label ticking.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const lastUpdatedLabel = (() => {
+    if (!updatedAt) return "Loading...";
+    const seconds = Math.max(0, Math.round((now - updatedAt) / 1000));
+    if (seconds < 5) return "Updated just now";
+    if (seconds < 60) return `Updated ${seconds}s ago`;
+    const minutes = Math.round(seconds / 60);
+    return `Updated ${minutes}m ago`;
+  })();
 
   return (
     <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-[var(--muted)]">{lastUpdatedLabel}</p>
+        <button
+          type="button"
+          onClick={load}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:text-white disabled:opacity-60"
+        >
+          <FontAwesomeIcon icon={faArrowsRotate} className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+      </div>
+
       {error && <p className="text-sm text-red-300">{error}</p>}
+
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="Students" value={String(stats.students ?? 0)} hint="Active student accounts" />
         <StatCard label="Materials" value={String(stats.materials ?? 0)} hint="Total materials in ACA library" />
