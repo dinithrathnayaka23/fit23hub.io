@@ -4,10 +4,11 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRightToBracket, faEnvelope, faLock } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRightToBracket, faEnvelope, faEye, faEyeSlash, faLock } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
+import SuspendedModal from "@/components/SuspendedModal";
 
 const container = {
   hidden: { opacity: 0, y: 20 },
@@ -33,12 +34,15 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [suspended, setSuspended] = useState<{ message: string; reason: string | null } | null>(null);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
+    setSuspended(null);
 
     if (!UOM_EMAIL_REGEX.test(email)) {
       setError("Email must use @uom.lk domain.");
@@ -52,7 +56,14 @@ export default function LoginPage() {
       setAuth(result.token, result.user);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      if (err instanceof ApiError && err.payload?.suspended) {
+        setSuspended({
+          message: typeof err.payload.message === "string" ? err.payload.message : "You are suspended by the Admin",
+          reason: typeof err.payload.reason === "string" ? err.payload.reason : null,
+        });
+      } else {
+        setError(err instanceof Error ? err.message : "Login failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -88,15 +99,26 @@ export default function LoginPage() {
           </motion.label>
           <motion.label variants={item} className="block text-sm">
             <span className="mb-1 inline-flex items-center gap-2 text-[var(--muted)]"><FontAwesomeIcon icon={faLock} className="h-3 w-3" />Password</span>
-            <motion.input
-              whileFocus={{ scale: 1.01 }}
-              className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 outline-none focus:border-[var(--accent)]"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter Password"
-              required
-            />
+            <div className="relative">
+              <motion.input
+                whileFocus={{ scale: 1.01 }}
+                className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 pr-10 outline-none focus:border-[var(--accent)]"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter Password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-[var(--muted)] transition hover:text-white"
+              >
+                <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} className="h-4 w-4" />
+              </button>
+            </div>
           </motion.label>
           {error && <p className="text-sm text-red-300">{error}</p>}
           <motion.button
@@ -117,6 +139,12 @@ export default function LoginPage() {
           Batch admin? <Link className="text-[var(--accent)]" href="/admin-login">Use admin login</Link> for admin panel controls.
         </motion.p>
       </motion.div>
+      <SuspendedModal
+        open={suspended !== null}
+        message={suspended?.message ?? ""}
+        reason={suspended?.reason}
+        onClose={() => setSuspended(null)}
+      />
     </div>
   );
 }

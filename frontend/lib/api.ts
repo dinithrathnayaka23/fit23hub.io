@@ -3,6 +3,18 @@ import type { LiveSession, Material, MaterialCategory, RecordedSession, User } f
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 type PaginationMeta = { page: number; pageSize: number; total: number; totalPages: number };
 
+export class ApiError extends Error {
+  status: number;
+  payload: Record<string, unknown>;
+
+  constructor(message: string, status: number, payload: Record<string, unknown> = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -32,7 +44,7 @@ async function request<T>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.message || "Request failed");
+    throw new ApiError(data.message || "Request failed", response.status, data);
   }
 
   return data as T;
@@ -207,7 +219,7 @@ export const api = {
     return request<{ users: User[]; pagination: PaginationMeta }>(`/admin/users${suffix}`, {}, token);
   },
 
-  async updateUser(token: string, id: string, payload: { role?: "STUDENT" | "ADMIN"; status?: "ACTIVE" | "SUSPENDED" }) {
+  async updateUser(token: string, id: string, payload: { role?: "STUDENT" | "ADMIN"; status?: "ACTIVE" | "SUSPENDED"; reason?: string }) {
     return request<{ user: User }>(`/admin/users/${id}`, {
       method: "PATCH",
       body: JSON.stringify(payload),

@@ -9,6 +9,7 @@ export type User = {
   profileImageUrl?: string | null;
   role: UserRole;
   status: UserStatus;
+  suspensionReason?: string | null;
   createdAt?: string;
 };
 
