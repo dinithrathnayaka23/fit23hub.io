@@ -1,4 +1,4 @@
-import type { AppNotification, LiveSession, Material, MaterialCategory, RecordedSession, User } from "./types";
+import type { AiAnswerMeta, AiFlashcard, AiQuizQuestion, AppNotification, LiveSession, Material, MaterialCategory, RecordedSession, User } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 type PaginationMeta = { page: number; pageSize: number; total: number; totalPages: number };
@@ -429,6 +429,8 @@ export const api = {
         createdAt: string;
         citations: Array<{ id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number }>;
       };
+      degraded?: boolean;
+      meta?: AiAnswerMeta | null;
     }>(`/ai/chats/${chatId}/query`, {
       method: "POST",
       body: JSON.stringify({ prompt }),
@@ -445,6 +447,9 @@ export const api = {
         createdAt: string;
         citations: Array<{ id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number }>;
       };
+      quiz?: AiQuizQuestion[];
+      degraded?: boolean;
+      meta?: AiAnswerMeta | null;
     }>(`/ai/chats/${chatId}/quiz`, {
       method: "POST",
       body: JSON.stringify(payload || {}),
@@ -461,6 +466,9 @@ export const api = {
         createdAt: string;
         citations: Array<{ id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number }>;
       };
+      flashcards?: AiFlashcard[];
+      degraded?: boolean;
+      meta?: AiAnswerMeta | null;
     }>(`/ai/chats/${chatId}/flashcards`, {
       method: "POST",
       body: JSON.stringify(payload || {}),
@@ -494,6 +502,83 @@ export async function downloadDataExport(token: string): Promise<void> {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+type StreamHandlers = {
+  onMeta?: (citations: unknown[]) => void;
+  onToken?: (chunk: string) => void;
+  onDone?: (payload: {
+    degraded?: boolean;
+    truncated?: boolean;
+    meta?: AiAnswerMeta | null;
+    message?: unknown;
+  }) => void;
+  onError?: (message: string) => void;
+};
+
+/**
+ * Streams an answer over SSE, decoding the frames by hand because EventSource
+ * cannot send a POST body or an Authorization header. Throws ApiError if the
+ * stream never opens, so the caller can fall back to the plain endpoint.
+ */
+export async function askAiInChatStream(
+  token: string,
+  chatId: string,
+  prompt: string,
+  handlers: StreamHandlers = {},
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/ai/chats/${chatId}/query/stream`, {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ prompt }),
+  });
+
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(data.message || "Failed to start the answer stream", response.status, data);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const handleFrame = (frame: string) => {
+    let event = "message";
+    const dataLines: string[] = [];
+
+    for (const line of frame.split(/\r?\n/)) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+
+    if (!dataLines.length) return;
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(dataLines.join("\n"));
+    } catch {
+      return;
+    }
+
+    if (event === "token") handlers.onToken?.(String(payload.t ?? ""));
+    else if (event === "meta") handlers.onMeta?.((payload.citations as unknown[]) || []);
+    else if (event === "done") handlers.onDone?.(payload as Parameters<NonNullable<StreamHandlers["onDone"]>>[0]);
+    else if (event === "error") handlers.onError?.(String(payload.message ?? "Stream failed"));
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split(/\r?\n\r?\n/);
+    buffer = frames.pop() ?? "";
+    frames.forEach(handleFrame);
+  }
+
+  if (buffer.trim()) handleFrame(buffer);
 }
 
 export function resolveAssetUrl(url: string | null | undefined): string {

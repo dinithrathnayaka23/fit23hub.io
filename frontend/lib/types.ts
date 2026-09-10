@@ -100,3 +100,24 @@ export type AppNotification = {
   readAt?: string | null;
   createdAt: string;
 };
+
+export type AiQuizQuestion = {
+  q: string;
+  options: string[];
+  answerIndex: number;
+  why?: string;
+};
+
+export type AiFlashcard = {
+  front: string;
+  back: string;
+};
+
+/** Which provider actually answered - useful for debugging fallback behaviour. */
+export type AiAnswerMeta = {
+  provider: string;
+  model: string;
+  latencyMs: number;
+  fallbackDepth: number;
+  cached: boolean;
+};
