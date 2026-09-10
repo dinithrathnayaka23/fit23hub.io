@@ -13,12 +13,14 @@ import {
   faRobot,
   faPowerOff,
   faBell,
+  faPlugCircleExclamation,
   faUsers,
   faUserCircle,
   faVideo,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { clearAuth, getStoredUser } from "@/lib/auth";
+import { useOnlineStatus } from "@/lib/use-online";
 import TopBar from "@/components/ui/TopBar";
 
 type AppShellProps = {
@@ -59,6 +61,7 @@ const adminLinks: ShellLink[] = [
 export default function AppShell({ children, title, subtitle, admin = false }: AppShellProps) {
   const pathname = usePathname();
   const links = admin ? adminLinks : dashboardLinks;
+  const online = useOnlineStatus();
   const [user, setUser] = useState<ReturnType<typeof getStoredUser>>(null);
 
   useEffect(() => {
@@ -126,6 +129,17 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <TopBar links={links} admin={admin} user={user} />
+
+          {!online && (
+            <div
+              role="status"
+              className="flex shrink-0 items-center gap-2.5 rounded-lg border border-[rgba(250,204,21,0.45)] bg-[rgba(250,204,21,0.1)] px-3 py-2 text-xs text-amber-200"
+            >
+              <FontAwesomeIcon icon={faPlugCircleExclamation} className="h-3.5 w-3.5 shrink-0" />
+              You are offline. Anything on screen may be out of date, and changes will not save until
+              you reconnect.
+            </div>
+          )}
 
           <main className="custom-scroll min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
             <header className="glass-card grid-surface p-5 md:p-6">
