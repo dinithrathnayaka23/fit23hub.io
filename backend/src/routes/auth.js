@@ -233,6 +233,13 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    if (user.deletedAt) {
+      return res.status(403).json({
+        message: "This account has been removed by an administrator.",
+        removed: true,
+      });
+    }
+
     const isValid = await bcrypt.compare(input.password, user.passwordHash);
 
     // A suspended account is blocked regardless of whether the password is correct,
@@ -337,7 +344,7 @@ router.post("/forgot-password", async (req, res) => {
       message: "If that email belongs to a FIT23Hub account, a reset link is on its way.",
     };
 
-    if (!user || user.status !== "ACTIVE") {
+    if (!user || user.status !== "ACTIVE" || user.deletedAt) {
       return res.json(genericResponse);
     }
 

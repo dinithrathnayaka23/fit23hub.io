@@ -228,6 +228,26 @@ export const api = {
     return request<{ message: string }>(`/materials/${id}`, { method: "DELETE" }, token);
   },
 
+  async getArchivedMaterials(token: string, query?: { page?: number; pageSize?: number }) {
+    const params = new URLSearchParams();
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.pageSize) params.set("pageSize", String(query.pageSize));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<{ materials: Material[]; pagination: PaginationMeta }>(
+      `/materials/admin/archived${suffix}`,
+      {},
+      token,
+    );
+  },
+
+  async restoreMaterial(token: string, id: string) {
+    return request<{ material: Material }>(`/materials/admin/${id}/restore`, { method: "POST" }, token);
+  },
+
+  async purgeMaterial(token: string, id: string) {
+    return request<{ message: string }>(`/materials/admin/${id}/purge`, { method: "DELETE" }, token);
+  },
+
   async getRecordedSessions(token: string, query?: { module?: string; semester?: number; academicYear?: string; page?: number; pageSize?: number }) {
     const params = new URLSearchParams();
     if (query?.module) params.set("module", query.module);
@@ -317,6 +337,22 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }, token);
+  },
+
+  async getArchivedUsers(token: string, query?: { page?: number; pageSize?: number }) {
+    const params = new URLSearchParams();
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.pageSize) params.set("pageSize", String(query.pageSize));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<{ users: User[]; pagination: PaginationMeta }>(`/admin/users/archived${suffix}`, {}, token);
+  },
+
+  async archiveUser(token: string, id: string) {
+    return request<{ user: User; message: string }>(`/admin/users/${id}`, { method: "DELETE" }, token);
+  },
+
+  async restoreUser(token: string, id: string) {
+    return request<{ user: User }>(`/admin/users/${id}/restore`, { method: "POST" }, token);
   },
 
   async askAi(token: string, prompt: string) {

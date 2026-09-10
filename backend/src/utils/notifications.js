@@ -43,6 +43,7 @@ async function findRecipients(where, excludeUserId) {
         ...where,
         status: "ACTIVE",
         isSystemAccount: false,
+        deletedAt: null,
         emailVerifiedAt: { not: null },
         ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
       },

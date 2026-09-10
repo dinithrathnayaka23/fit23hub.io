@@ -53,9 +53,12 @@ model User {
   suspensionReason String?
   emailVerifiedAt DateTime?
   isSystemAccount Boolean          @default(false)
+  deletedAt    DateTime?
+  deletedById  String?
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
-  materials    Material[]
+  materials    Material[]        @relation("MaterialUploader")
+  archivedMaterials Material[]   @relation("MaterialArchivedBy")
   recordings   RecordedSession[]
   liveSessions LiveSession[]
   aiQueries    AiQueryLog[]
@@ -68,6 +71,7 @@ model User {
 
   @@index([role, status])
   @@index([createdAt])
+  @@index([deletedAt])
 }
 
 model AiProject {
@@ -95,10 +99,14 @@ model Material {
   fileUrl      String?
   externalUrl  String?
   uploaderId   String
-  uploader     User             @relation(fields: [uploaderId], references: [id])
+  uploader     User             @relation("MaterialUploader", fields: [uploaderId], references: [id])
+  deletedAt    DateTime?
+  deletedById  String?
+  deletedBy    User?            @relation("MaterialArchivedBy", fields: [deletedById], references: [id])
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
+  @@index([deletedAt, createdAt])
   @@index([uploaderId, createdAt])
   @@index([semester, academicYear, createdAt])
   @@index([module, createdAt])
