@@ -6,6 +6,7 @@ import { ADMIN_ROLES, requireAuth, requireRole } from "../middleware/auth.js";
 import { uploadRecording } from "../utils/upload.js";
 import { dispatch, notifyAllStudents } from "../utils/notifications.js";
 import { storeUploadedFile } from "../utils/storage.js";
+import { contains } from "../utils/search.js";
 
 const router = express.Router();
 const levelValues = ["Level 1", "Level 2", "Level 3", "Level 4"];
@@ -50,7 +51,7 @@ router.get("/", requireAuth, async (req, res) => {
   const pageSize = parsePageSize(req.query.pageSize, DEFAULT_PAGE_SIZE);
 
   const where = {
-    ...(module ? { module: { contains: module } } : {}),
+    ...(module ? { module: contains(module) } : {}),
     ...(semester ? { semester } : {}),
     ...(academicYear ? { academicYear } : {}),
   };

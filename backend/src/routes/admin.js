@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { ADMIN_ROLES, invalidateAuthUserCache, requireAuth, requireRole } from "../middleware/auth.js";
 import { dispatch, notifyUser } from "../utils/notifications.js";
+import { contains } from "../utils/search.js";
 
 const router = express.Router();
 const DEFAULT_PAGE_SIZE = 25;
@@ -85,9 +86,9 @@ router.get("/users", async (req, res) => {
     ? {
       ...baseWhere,
       OR: [
-        { fullName: { contains: q } },
-        { indexNo: { contains: q } },
-        { email: { contains: q } },
+        { fullName: contains(q) },
+        { indexNo: contains(q) },
+        { email: contains(q) },
       ],
     }
     : baseWhere;
