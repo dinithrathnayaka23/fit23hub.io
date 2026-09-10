@@ -2,6 +2,7 @@ import express from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { ADMIN_ROLES, isAdminRole, requireAuth, requireRole } from "../middleware/auth.js";
+import { contains } from "../utils/search.js";
 import { upload } from "../utils/upload.js";
 import { storeUploadedFile } from "../utils/storage.js";
 import { dispatch, notifyAllStudents, notifyAdmins } from "../utils/notifications.js";
@@ -41,16 +42,16 @@ router.get("/", requireAuth, async (req, res) => {
   const where = {
     deletedAt: null,
     ...(category ? { category } : {}),
-    ...(module ? { module: { contains: module } } : {}),
+    ...(module ? { module: contains(module) } : {}),
     ...(semester ? { semester } : {}),
     ...(academicYear ? { academicYear } : {}),
     ...(q
       ? {
           OR: [
-            { title: { contains: q } },
-            { description: { contains: q } },
-            { module: { contains: q } },
-            { uploader: { fullName: { contains: q } } },
+            { title: contains(q) },
+            { description: contains(q) },
+            { module: contains(q) },
+            { uploader: { fullName: contains(q) } },
           ],
         }
       : {}),
