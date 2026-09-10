@@ -26,6 +26,9 @@ coverage/
 # Environment / secrets
 .env
 .env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
 backend/.env
 frontend/.env.local
 frontend/.env.production
