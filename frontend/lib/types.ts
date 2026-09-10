@@ -76,3 +76,27 @@ export type LiveSession = {
     role: UserRole;
   };
 };
+
+export type NotificationType =
+  | "WELCOME"
+  | "MATERIAL_UPLOADED"
+  | "RECORDING_PUBLISHED"
+  | "LIVE_SCHEDULED"
+  | "LIVE_STARTED"
+  | "ACCOUNT_SUSPENDED"
+  | "ACCOUNT_REACTIVATED"
+  | "ROLE_CHANGED"
+  | "PASSWORD_CHANGED"
+  | "NEW_STUDENT_JOINED"
+  | "ACCOUNT_DELETED";
+
+export type AppNotification = {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  link?: string | null;
+  actorName?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+};
