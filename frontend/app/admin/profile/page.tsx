@@ -5,7 +5,14 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faDownload, faKey, faTriangleExclamation, faUpload, faUserGraduate } from "@fortawesome/free-solid-svg-icons";
+import {
+  faDownload,
+  faKey,
+  faShieldHalved,
+  faTriangleExclamation,
+  faUpload,
+  faUserShield,
+} from "@fortawesome/free-solid-svg-icons";
 import { api, downloadDataExport, resolveAssetUrl } from "@/lib/api";
 import { clearAuth, getToken, getStoredUser, setAuth } from "@/lib/auth";
 import PasswordField from "@/components/ui/PasswordField";
@@ -13,11 +20,32 @@ import type { User } from "@/lib/types";
 
 const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,72}$/;
 
-export default function ProfilePage() {
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+
+type DetailProps = { label: string; value: string; tone?: "default" | "good" | "bad" };
+
+function Detail({ label, value, tone = "default" }: DetailProps) {
+  const toneClass =
+    tone === "good" ? "text-emerald-300" : tone === "bad" ? "text-red-300" : "text-[var(--muted)]";
+
+  return (
+    <article className="rounded-xl border border-[var(--border)] p-4">
+      <p className="text-xs uppercase tracking-[0.12em] text-[var(--accent)]">{label}</p>
+      <p className={`mt-2 text-sm ${toneClass}`}>{value}</p>
+    </article>
+  );
+}
+
+export default function AdminProfilePage() {
   const [user, setUser] = useState<User | null>(getStoredUser());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const [savingImage, setSavingImage] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -55,14 +83,14 @@ export default function ProfilePage() {
 
   const onUploadImage = async (event: FormEvent) => {
     event.preventDefault();
-    setError("");
+    setImageError("");
 
     if (!token || !selectedFile) {
-      setError("Please choose an image first.");
+      setImageError("Please choose an image first.");
       return;
     }
 
-    setSaving(true);
+    setSavingImage(true);
 
     try {
       const result = await api.uploadProfileImage(token, selectedFile);
@@ -70,9 +98,9 @@ export default function ProfilePage() {
       setAuth(token, result.user);
       setSelectedFile(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to upload profile image");
+      setImageError(err instanceof Error ? err.message : "Failed to upload profile image");
     } finally {
-      setSaving(false);
+      setSavingImage(false);
     }
   };
 
@@ -137,7 +165,7 @@ export default function ProfilePage() {
     setDeleteError("");
 
     if (deleteConfirm !== "DELETE") {
-      setDeleteError('Type DELETE exactly to confirm.');
+      setDeleteError("Type DELETE exactly to confirm.");
       return;
     }
 
@@ -153,15 +181,22 @@ export default function ProfilePage() {
   };
 
   const imageSrc = user?.profileImageUrl ? resolveAssetUrl(user.profileImageUrl) : "/avatar-student.svg";
+  const verified = Boolean(user?.emailVerifiedAt);
 
   return (
     <div className="space-y-4">
       <section className="glass-card p-6">
-        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+        <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-[var(--accent)]">
+          <FontAwesomeIcon icon={faUserShield} className="h-3 w-3" />
+          Administrator Profile
+        </p>
+
+        <div className="mt-4 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={imageSrc}
-              alt="Profile image"
+              alt="Administrator profile"
               width={96}
               height={96}
               onError={(event) => {
@@ -170,8 +205,12 @@ export default function ProfilePage() {
               className="h-24 w-24 rounded-2xl border border-[var(--border)] object-cover"
             />
             <div>
-              <h2 className="text-xl font-semibold">{user?.fullName || "Student"}</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">Index No: {user?.indexNo || "-"} | {user?.email || "-"}</p>
+              <h2 className="text-xl font-semibold">{user?.fullName || "Administrator"}</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">{user?.email || "-"}</p>
+              <span className="mt-2 inline-flex items-center gap-2 rounded-full border border-[rgba(56,189,248,0.4)] bg-[rgba(56,189,248,0.12)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#c8eeff]">
+                <FontAwesomeIcon icon={faShieldHalved} className="h-3 w-3" />
+                {user?.role || "ADMIN"}
+              </span>
             </div>
           </div>
         </div>
@@ -185,24 +224,28 @@ export default function ProfilePage() {
           />
           <button
             type="submit"
-            disabled={saving}
+            disabled={savingImage}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm hover:bg-[#2a4fb5] disabled:opacity-70"
           >
             <FontAwesomeIcon icon={faUpload} className="h-4 w-4" />
-            {saving ? "Saving..." : "Save Profile Image"}
+            {savingImage ? "Saving..." : "Save Profile Image"}
           </button>
         </form>
-        {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
+        {imageError && <p className="mt-2 text-sm text-red-300">{imageError}</p>}
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <article className="rounded-xl border border-[var(--border)] p-4">
-            <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-[var(--accent)]"><FontAwesomeIcon icon={faUserGraduate} className="h-3 w-3" />Account Role</p>
-            <p className="mt-3 text-sm text-[var(--muted)]">{user?.role || "STUDENT"}</p>
-          </article>
-          <article className="rounded-xl border border-[var(--border)] p-4">
-            <p className="text-xs uppercase tracking-[0.12em] text-[var(--accent)]">Status</p>
-            <p className="mt-3 text-sm text-[var(--muted)]">{user?.status || "ACTIVE"}</p>
-          </article>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Detail label="Identifier" value={user?.indexNo || "-"} />
+          <Detail
+            label="Account Status"
+            value={user?.status || "ACTIVE"}
+            tone={user?.status === "SUSPENDED" ? "bad" : "good"}
+          />
+          <Detail
+            label="Email"
+            value={verified ? "Verified" : "Not verified"}
+            tone={verified ? "good" : "bad"}
+          />
+          <Detail label="Admin Since" value={formatDate(user?.createdAt)} />
         </div>
       </section>
 
@@ -213,7 +256,8 @@ export default function ProfilePage() {
         </p>
         <h2 className="mt-2 text-xl font-semibold">Change Password</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Use at least 10 characters including uppercase, lowercase, a number, and a symbol.
+          Admin credentials unlock user management and content moderation. Use at least 10 characters
+          including uppercase, lowercase, a number, and a symbol.
         </p>
 
         <form onSubmit={onChangePassword} className="mt-5 grid gap-4 md:max-w-xl md:grid-cols-2">
@@ -264,7 +308,7 @@ export default function ProfilePage() {
         </p>
         <h2 className="mt-2 text-xl font-semibold">Your Data</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Download everything FIT23Hub holds about you, or permanently delete your account. See the{" "}
+          Download everything FIT23Hub holds about this account, or remove it. See the{" "}
           <Link className="text-[var(--accent)] hover:underline" href="/privacy">
             Privacy Policy
           </Link>{" "}
@@ -277,7 +321,8 @@ export default function ProfilePage() {
         <div className="mt-5 rounded-xl border border-[var(--border)] p-4">
           <h3 className="text-sm font-semibold">Export my data</h3>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            A JSON file containing your profile, uploads, AI projects, chats and query history.
+            A JSON file containing your profile, published recordings, live sessions and any AI
+            projects, chats and query history.
           </p>
           <button
             type="button"
@@ -296,9 +341,9 @@ export default function ProfilePage() {
             Delete my account
           </h3>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Permanently erases your name, email, index number, profile photo and all AI chats,
-            sources and projects. Study materials you shared are kept for the batch but transferred
-            to an anonymous account. This cannot be undone.
+            Permanently erases your name, email, profile photo and all AI chats, sources and
+            projects. Content you published stays for the batch but is transferred to an anonymous
+            account. You cannot delete the last active admin &mdash; promote another admin first.
           </p>
           <button
             type="button"
@@ -327,7 +372,7 @@ export default function ProfilePage() {
               onClick={() => !deleting && setDeleteOpen(false)}
               role="dialog"
               aria-modal="true"
-              aria-labelledby="delete-account-title"
+              aria-labelledby="admin-delete-title"
             >
               <motion.div
                 className="glass-card my-auto w-full max-w-md p-5 sm:p-6"
@@ -337,9 +382,12 @@ export default function ProfilePage() {
                 transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <h2 id="delete-account-title" className="inline-flex items-center gap-2 text-base font-semibold text-[#fca5a5] sm:text-lg">
+                <h2
+                  id="admin-delete-title"
+                  className="inline-flex items-center gap-2 text-base font-semibold text-[#fca5a5] sm:text-lg"
+                >
                   <FontAwesomeIcon icon={faTriangleExclamation} className="h-4 w-4" />
-                  Delete your account?
+                  Delete your admin account?
                 </h2>
                 <p className="mt-2 text-sm text-[var(--muted)]">
                   This is permanent. Consider downloading your data first.

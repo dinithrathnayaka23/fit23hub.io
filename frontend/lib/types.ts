@@ -10,6 +10,7 @@ export type User = {
   role: UserRole;
   status: UserStatus;
   suspensionReason?: string | null;
+  emailVerifiedAt?: string | null;
   createdAt?: string;
 };
 

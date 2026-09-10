@@ -46,6 +46,7 @@ const adminLinks: ShellLink[] = [
   { href: "/admin/materials", label: "Materials", icon: faBookOpen },
   { href: "/admin/recordings", label: "Recordings", icon: faVideo },
   { href: "/admin/live", label: "Kuppi Live", icon: faCircleNodes },
+  { href: "/admin/profile", label: "Profile", icon: faUserCircle },
 ];
 
 export default function AppShell({ children, title, subtitle, admin = false }: AppShellProps) {
