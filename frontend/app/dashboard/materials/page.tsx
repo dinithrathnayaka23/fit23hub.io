@@ -1,11 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronLeft, faChevronRight, faMagnifyingGlass, faUpload } from "@fortawesome/free-solid-svg-icons";
 import MaterialCard from "@/components/cards/MaterialCard";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { Material, MaterialCategory } from "@/lib/types";
 
 const categories: { value: MaterialCategory; label: string }[] = [
@@ -49,46 +50,40 @@ export default function MaterialsPage() {
   const [externalUrl, setExternalUrl] = useState("");
   const [file, setFile] = useState<File | undefined>(undefined);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
 
   const token = useMemo(() => getToken(), []);
 
-  const loadMaterials = async (page = 1) => {
+  const loadMaterials = useCallback(async (page = 1) => {
     if (!token) return;
 
-    const response = await api.getMaterials(token, {
-      q: search || undefined,
-      category: categoryFilter || undefined,
-      module: moduleFilter || undefined,
-      semester: semesterFilter || undefined,
-      academicYear: academicYearFilter || undefined,
-      sort,
-      page,
-      pageSize: MATERIALS_PAGE_SIZE,
-    });
+    setLoading(true);
+    try {
+      const response = await api.getMaterials(token, {
+        q: search || undefined,
+        category: categoryFilter || undefined,
+        module: moduleFilter || undefined,
+        semester: semesterFilter || undefined,
+        academicYear: academicYearFilter || undefined,
+        sort,
+        page,
+        pageSize: MATERIALS_PAGE_SIZE,
+      });
 
-    setMaterials(response.materials);
-    setPagination(response.pagination);
-  };
+      setMaterials(response.materials);
+      setPagination(response.pagination);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, search, categoryFilter, moduleFilter, semesterFilter, academicYearFilter, sort]);
 
   useEffect(() => {
-    if (!token) return;
-
-    api.getMaterials(token, {
-      q: search || undefined,
-      category: categoryFilter || undefined,
-      module: moduleFilter || undefined,
-      semester: semesterFilter || undefined,
-      academicYear: academicYearFilter || undefined,
-      sort,
-      page: 1,
-      pageSize: MATERIALS_PAGE_SIZE,
-    })
-      .then((response) => {
-        setMaterials(response.materials);
-        setPagination(response.pagination);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load materials"));
-  }, [token, search, categoryFilter, moduleFilter, semesterFilter, academicYearFilter, sort]);
+    loadMaterials(1);
+  }, [loadMaterials]);
 
   const groupedMaterials = useMemo(() => {
     return materials.reduce<Record<string, Material[]>>((groups, item) => {
@@ -231,17 +226,36 @@ export default function MaterialsPage() {
       {error && <p className="text-sm text-red-300">{error}</p>}
 
       <div className="space-y-6">
-        {Object.entries(groupedMaterials).map(([group, items]) => (
-          <div key={group} className="space-y-3">
-            <h3 className="text-base font-semibold text-[#d5ecff]">{group}</h3>
-            <div className="space-y-4">
-              {items.map((item) => (
-                <MaterialCard key={item.id} item={item} />
-              ))}
+        {loadError ? (
+          <ErrorState
+            error={loadError}
+            fallback="We could not load the materials library."
+            onRetry={() => loadMaterials(pagination.page)}
+            retrying={loading}
+          />
+        ) : loading && materials.length === 0 ? (
+          <LoadingState label="Loading materials..." />
+        ) : materials.length === 0 ? (
+          <EmptyState
+            title="No materials found"
+            hint={
+              search || categoryFilter || moduleFilter || semesterFilter || academicYearFilter
+                ? "Nothing matches those filters. Try clearing them or searching for something broader."
+                : "Nothing has been shared yet. Upload the first set of notes to get the library started."
+            }
+          />
+        ) : (
+          Object.entries(groupedMaterials).map(([group, items]) => (
+            <div key={group} className="space-y-3">
+              <h3 className="text-base font-semibold text-[#d5ecff]">{group}</h3>
+              <div className="space-y-4">
+                {items.map((item) => (
+                  <MaterialCard key={item.id} item={item} />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-        {materials.length === 0 && <div className="glass-card p-4 text-sm text-[var(--muted)]">No materials found.</div>}
+          ))
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-2">

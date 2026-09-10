@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, resolveAssetUrl } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { RecordedSession } from "@/lib/types";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
@@ -56,21 +57,33 @@ export default function RecordingsPage() {
   const [moduleFilter, setModuleFilter] = useState("");
   const [semesterFilter, setSemesterFilter] = useState(0);
   const [academicYearFilter, setAcademicYearFilter] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
 
   const token = useMemo(() => getToken(), []);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!token) return;
 
-    api.getRecordedSessions(token, {
-      module: moduleFilter || undefined,
-      semester: semesterFilter || undefined,
-      academicYear: academicYearFilter || undefined,
-    })
-      .then((result) => setSessions(result.sessions))
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load recorded sessions"));
+    setLoading(true);
+    try {
+      const result = await api.getRecordedSessions(token, {
+        module: moduleFilter || undefined,
+        semester: semesterFilter || undefined,
+        academicYear: academicYearFilter || undefined,
+      });
+      setSessions(result.sessions);
+      setError(null);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
   }, [token, moduleFilter, semesterFilter, academicYearFilter]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const grouped = useMemo(() => {
     return sessions.reduce<Record<string, RecordedSession[]>>((groups, item) => {
@@ -111,9 +124,13 @@ export default function RecordingsPage() {
         </select>
       </div>
 
-      {error && <p className="text-sm text-red-300">{error}</p>}
+      {error ? (
+        <ErrorState error={error} fallback="We could not load the recordings archive." onRetry={load} retrying={loading} />
+      ) : loading && sessions.length === 0 ? (
+        <LoadingState label="Loading recordings..." />
+      ) : null}
 
-      {Object.entries(grouped).map(([group, items]) => (
+      {!error && Object.entries(grouped).map(([group, items]) => (
         <div key={group} className="space-y-3">
           <h3 className="text-base font-semibold text-[#d5ecff]">{group}</h3>
           {items.map((session) => (
@@ -161,7 +178,16 @@ export default function RecordingsPage() {
         </div>
       ))}
 
-      {sessions.length === 0 && <div className="glass-card p-5 text-sm text-[var(--muted)]">No recordings published yet.</div>}
+      {!error && !loading && sessions.length === 0 && (
+        <EmptyState
+          title="No recordings yet"
+          hint={
+            moduleFilter || semesterFilter || academicYearFilter
+              ? "No recordings match those filters. Try widening them."
+              : "Once a Kuppi session is recorded and published it will appear here."
+          }
+        />
+      )}
     </section>
   );
 }

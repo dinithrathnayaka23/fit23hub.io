@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { LiveSession } from "@/lib/types";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
@@ -26,8 +27,11 @@ export default function LivePage() {
   const [moduleFilter, setModuleFilter] = useState("");
   const [semesterFilter, setSemesterFilter] = useState(0);
   const [academicYearFilter, setAcademicYearFilter] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
   const [now, setNow] = useState<number | null>(null);
+  // Holds the latest poll so the retry button can trigger one between ticks.
+  const pollRef = useRef<(() => Promise<void>) | null>(null);
 
   const token = useMemo(() => getToken(), []);
 
@@ -42,11 +46,15 @@ export default function LivePage() {
           academicYear: academicYearFilter || undefined,
         });
         setSessions(result.sessions);
-        setError("");
+        setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load live sessions");
+        setError(err);
+      } finally {
+        setLoading(false);
       }
     };
+
+    pollRef.current = poll;
 
     const initial = setTimeout(() => {
       poll();
@@ -104,7 +112,22 @@ export default function LivePage() {
         </select>
       </div>
 
-      {error && <p className="text-sm text-red-300">{error}</p>}
+      {error && sessions.length === 0 ? (
+        <ErrorState
+          error={error}
+          fallback="We could not load the live sessions."
+          onRetry={() => pollRef.current?.()}
+          retrying={loading}
+        />
+      ) : loading && sessions.length === 0 ? (
+        <LoadingState label="Loading live sessions..." />
+      ) : null}
+
+      {Boolean(error) && sessions.length > 0 && (
+        <p className="rounded-lg border border-[rgba(250,204,21,0.4)] bg-[rgba(250,204,21,0.08)] px-3 py-2 text-xs text-amber-200">
+          Could not refresh just now, so this list may be out of date. Retrying automatically.
+        </p>
+      )}
 
       {Object.entries(grouped).map(([group, items]) => (
         <div key={group} className="space-y-3">
@@ -147,7 +170,16 @@ export default function LivePage() {
         </div>
       ))}
 
-      {sessions.length === 0 && <div className="glass-card p-5 text-sm text-[var(--muted)]">No live sessions available yet.</div>}
+      {!error && !loading && sessions.length === 0 && (
+        <EmptyState
+          title="No live sessions"
+          hint={
+            moduleFilter || semesterFilter || academicYearFilter
+              ? "Nothing scheduled matches those filters."
+              : "Nothing is scheduled right now. Sessions appear here as soon as an admin adds one."
+          }
+        />
+      )}
     </section>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight } from "@fortawesome/free-solid-svg-icons";
 import FadeIn from "@/components/animations/FadeIn";
 import StatCard from "@/components/ui/StatCard";
+import { ErrorState, LoadingState } from "@/components/ui/StateCard";
 import VideoCard from "@/components/cards/VideoCard";
 import {
   ANNOUNCEMENT_CATEGORIES,
@@ -34,24 +35,44 @@ export default function DashboardPage() {
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
   const [upcoming, setUpcoming] = useState<Announcement[]>([]);
   const [nowMs, setNowMs] = useState<number | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+
+    setLoading(true);
+    try {
+      const [overview, recordingData, liveData] = await Promise.all([
+        api.overview(token),
+        api.getRecordedSessions(token),
+        api.getLiveSessions(token),
+      ]);
+      setStats(overview.stats as OverviewStats);
+      setRecordings(recordingData.sessions.slice(0, 2));
+      setLiveSessions(liveData.sessions);
+      setError(null);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+
+    // The deadline rail is secondary; if only it fails the rest of the page is
+    // still worth showing, so it degrades to empty rather than to an error.
+    api.getUpcomingAnnouncements(token, 3)
+      .then((result) => setUpcoming(result.announcements))
+      .catch(() => setUpcoming([]));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     const token = getToken();
     if (!token) return;
-
-    Promise.all([api.overview(token), api.getRecordedSessions(token), api.getLiveSessions(token)])
-      .then(([overview, recordingData, liveData]) => {
-        setStats(overview.stats as OverviewStats);
-        setRecordings(recordingData.sessions.slice(0, 2));
-        setLiveSessions(liveData.sessions);
-      })
-      .catch(() => {
-        setStats(null);
-      });
-
-    api.getUpcomingAnnouncements(token, 3)
-      .then((result) => setUpcoming(result.announcements))
-      .catch(() => setUpcoming([]));
 
     const timer = setInterval(() => {
       api.getLiveSessions(token)
@@ -89,6 +110,14 @@ export default function DashboardPage() {
     if (hours > 0) return `Starts in ${hours}h ${minutes}m`;
     return `Starts in ${minutes}m`;
   })();
+
+  if (error && !stats) {
+    return <ErrorState error={error} fallback="We could not load your dashboard." onRetry={load} retrying={loading} />;
+  }
+
+  if (loading && !stats) {
+    return <LoadingState label="Loading your dashboard..." />;
+  }
 
   return (
     <>
