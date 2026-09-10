@@ -9,12 +9,9 @@ import {
   faBookOpen,
   faClipboardQuestion,
   faClone,
-  faChevronLeft,
-  faChevronRight,
-  faRotate,
-  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
-import { api } from "@/lib/api";
+import { api, askAiInChatStream } from "@/lib/api";
+import { QuizCard, FlashcardsCard } from "@/components/ai/StudyArtifacts";
 import { getToken } from "@/lib/auth";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
@@ -159,163 +156,62 @@ function parseFlashcards(content: string): FlashcardItem[] {
   return cards;
 }
 
-function QuizArtifact({ items }: { items: QuizItem[] }) {
-  const [selected, setSelected] = useState<Record<number, "A" | "B" | "C" | "D" | undefined>>({});
-  const [submitted, setSubmitted] = useState(false);
+/**
+ * Newer generations are stored as JSON from the backend; older chat history is
+ * still the legacy "Q1. / Answer: / Front: / Back:" text. Try JSON first and
+ * fall back to the line parser so existing conversations keep rendering.
+ */
+function parseStructured(content: string): { quiz: QuizItem[]; cards: FlashcardItem[] } {
+  const trimmed = String(content || "").trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return { quiz: [], cards: [] };
 
-  const totalAnswered = items.filter((_, index) => Boolean(selected[index])).length;
-  const score = submitted
-    ? items.reduce((sum, item, index) => sum + (selected[index] === item.answer ? 1 : 0), 0)
-    : 0;
+  try {
+    const parsed = JSON.parse(trimmed);
+    const letters: ("A" | "B" | "C" | "D")[] = ["A", "B", "C", "D"];
 
-  return (
-    <div className="mt-2 space-y-3 rounded-lg border border-[rgba(56,189,248,0.26)] bg-[rgba(11,18,32,0.45)] p-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-[0.1em] text-[#9fdfff]">Interactive Quiz</p>
-        {submitted && <p className="text-xs text-[#bde8ff]">Score: {score}/{items.length}</p>}
-      </div>
-      {items.map((item, index) => (
-        <div key={index} className="space-y-2 rounded-lg border border-[var(--border)] bg-[rgba(7,13,23,0.65)] p-3">
-          <p className="text-sm text-[#e8f6ff]">Q{index + 1}. {item.question}</p>
-          <div className="grid gap-2">
-            {item.options.map((option) => {
-              const active = selected[index] === option.key;
-              const correct = submitted && option.key === item.answer;
-              const wrongSelected = submitted && active && option.key !== item.answer;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => setSelected((prev) => ({ ...prev, [index]: option.key }))}
-                  className={`rounded-md border px-2 py-1.5 text-left text-xs transition ${
-                    correct
-                      ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-100"
-                      : wrongSelected
-                        ? "border-rose-400/70 bg-rose-500/20 text-rose-100"
-                        : active
-                          ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.18)] text-white"
-                          : "border-[var(--border)] bg-[rgba(11,18,32,0.55)] text-[var(--muted)] hover:text-white"
-                  }`}
-                >
-                  {option.key}) {option.text}
-                </button>
-              );
-            })}
-          </div>
-          {submitted && (
-            <p className="text-xs text-[var(--muted)]">
-              <span className="text-[#d8eeff]">Why:</span> {item.why}
-            </p>
-          )}
-        </div>
-      ))}
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-[var(--muted)]">{totalAnswered}/{items.length} answered</p>
-        <button
-          type="button"
-          onClick={() => setSubmitted((prev) => !prev)}
-          className="rounded-md border border-[rgba(56,189,248,0.32)] bg-[rgba(56,189,248,0.12)] px-3 py-1.5 text-xs text-[#d9efff] hover:bg-[rgba(56,189,248,0.2)]"
-        >
-          {submitted ? "Hide Answers" : "Check Answers"}
-        </button>
-      </div>
-    </div>
-  );
-}
+    const rawQuestions: unknown[] = Array.isArray(parsed?.questions) ? parsed.questions : [];
+    const quiz: QuizItem[] = rawQuestions
+      .filter((item: unknown): item is { q: string; options: string[]; answerIndex: number; why?: string } => {
+        const candidate = item as { q?: unknown; options?: unknown; answerIndex?: unknown };
+        return typeof candidate?.q === "string"
+          && Array.isArray(candidate?.options)
+          && candidate.options.length === 4
+          && typeof candidate?.answerIndex === "number"
+          && candidate.answerIndex >= 0
+          && candidate.answerIndex <= 3;
+      })
+      .map((item) => ({
+        question: item.q,
+        options: item.options.map((text: string, i: number) => ({ key: letters[i], text })),
+        answer: letters[item.answerIndex],
+        why: item.why || "",
+      }));
 
-function FlashcardsArtifact({ cards }: { cards: FlashcardItem[] }) {
-  const [open, setOpen] = useState(false);
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
+    const rawCards: unknown[] = Array.isArray(parsed?.cards) ? parsed.cards : [];
+    const cards: FlashcardItem[] = rawCards
+      .filter((item: unknown): item is { front: string; back: string } => {
+        const candidate = item as { front?: unknown; back?: unknown };
+        return typeof candidate?.front === "string" && typeof candidate?.back === "string";
+      })
+      .map((item) => ({ front: item.front, back: item.back }));
 
-  const total = cards.length;
-  const current = cards[index];
-
-  return (
-    <div className="mt-2 rounded-lg border border-[rgba(56,189,248,0.26)] bg-[rgba(11,18,32,0.45)] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs uppercase tracking-[0.1em] text-[#9fdfff]">Flashcards</p>
-        <button
-          type="button"
-          onClick={() => {
-            setIndex(0);
-            setFlipped(false);
-            setOpen(true);
-          }}
-          className="rounded-md border border-[rgba(56,189,248,0.32)] bg-[rgba(56,189,248,0.12)] px-3 py-1.5 text-xs text-[#d9efff] hover:bg-[rgba(56,189,248,0.2)]"
-        >
-          Open Cards ({total})
-        </button>
-      </div>
-
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(2,6,14,0.72)] px-4">
-          <div className="w-full max-w-xl rounded-2xl border border-[rgba(56,189,248,0.3)] bg-[linear-gradient(145deg,rgba(8,16,30,0.96),rgba(12,26,48,0.96))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.1em] text-[#9fdfff]">Flashcard {index + 1}/{total}</p>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] hover:text-white"
-              >
-                <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setFlipped((prev) => !prev)}
-              className="mt-3 min-h-[220px] w-full rounded-xl border border-[rgba(56,189,248,0.3)] bg-[rgba(11,18,32,0.68)] p-4 text-left"
-            >
-              <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--muted)]">{flipped ? "Back" : "Front"}</p>
-              <p className="mt-3 text-sm leading-relaxed text-[#e8f6ff]">{flipped ? current.back : current.front}</p>
-              <p className="mt-4 inline-flex items-center gap-2 text-xs text-[#9fdfff]">
-                <FontAwesomeIcon icon={faRotate} className="h-3 w-3" />
-                Click card to flip
-              </p>
-            </button>
-
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIndex((prev) => (prev === 0 ? total - 1 : prev - 1));
-                  setFlipped(false);
-                }}
-                className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-white"
-              >
-                <FontAwesomeIcon icon={faChevronLeft} className="h-3 w-3" />
-                Previous
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIndex((prev) => (prev + 1) % total);
-                  setFlipped(false);
-                }}
-                className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-white"
-              >
-                Next
-                <FontAwesomeIcon icon={faChevronRight} className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    return { quiz, cards };
+  } catch {
+    return { quiz: [], cards: [] };
+  }
 }
 
 function AssistantContent({ content }: { content: string }) {
-  const quizItems = parseQuiz(content);
-  const flashcards = parseFlashcards(content);
+  const structured = parseStructured(content);
+  const quizItems = structured.quiz.length ? structured.quiz : parseQuiz(content);
+  const flashcards = structured.cards.length ? structured.cards : parseFlashcards(content);
 
   if (quizItems.length >= 3) {
-    return <QuizArtifact items={quizItems} />;
+    return <QuizCard items={quizItems} />;
   }
 
   if (flashcards.length >= 3) {
-    return <FlashcardsArtifact cards={flashcards} />;
+    return <FlashcardsCard cards={flashcards} />;
   }
 
   return <p className="mt-1 whitespace-pre-wrap leading-relaxed">{content}</p>;
@@ -342,6 +238,7 @@ export default function AiPage() {
 
   const [error, setError] = useState("");
   const [isAsking, setIsAsking] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState(false);
@@ -450,14 +347,44 @@ export default function AiPage() {
     setError("");
     if (!token || !activeChatId || !prompt.trim()) return;
 
+    const question = prompt.trim();
+    const chatId = activeChatId;
+
+    setIsAsking(true);
+    setStreamingText("");
+    setPrompt("");
+
     try {
-      setIsAsking(true);
-      await api.askAiInChat(token, activeChatId, prompt.trim());
-      await loadMessages(activeChatId);
-      setPrompt("");
+      let sawToken = false;
+
+      await askAiInChatStream(token, chatId, question, {
+        onToken: (chunk) => {
+          sawToken = true;
+          setStreamingText((current) => current + chunk);
+        },
+        onError: (message) => setError(message),
+      });
+
+      // Nothing arrived over the stream (proxy stripped it, or the browser
+      // buffered it away) - fall back to the plain endpoint so the student
+      // still gets an answer.
+      if (!sawToken) {
+        await api.askAiInChat(token, chatId, question);
+      }
+
+      await loadMessages(chatId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI request failed");
+      // The stream never opened at all; retry once without streaming.
+      try {
+        await api.askAiInChat(token, chatId, question);
+        await loadMessages(chatId);
+      } catch (fallbackError) {
+        setError(fallbackError instanceof Error ? fallbackError.message : "AI request failed");
+        setPrompt(question);
+      }
+      void err;
     } finally {
+      setStreamingText("");
       setIsAsking(false);
     }
   };
@@ -668,7 +595,16 @@ export default function AiPage() {
               )}
             </div>
           ))}
-          {(isAsking || isGeneratingQuiz || isGeneratingFlashcards) && (
+          {streamingText && (
+            <div className="rounded-xl border border-[rgba(56,189,248,0.28)] bg-[rgba(56,189,248,0.05)] p-3 text-sm">
+              <p className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">Assistant</p>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed">
+                {streamingText}
+                <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-[var(--accent)]" />
+              </p>
+            </div>
+          )}
+          {((isAsking && !streamingText) || isGeneratingQuiz || isGeneratingFlashcards) && (
             <p className="text-xs text-[var(--muted)]">
               {isAsking ? "Generating answer..." : isGeneratingQuiz ? "Generating quiz..." : "Generating flashcards..."}
             </p>
