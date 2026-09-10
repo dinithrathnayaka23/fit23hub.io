@@ -2,6 +2,7 @@ import express from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { invalidateAuthUserCache, requireAuth, requireRole } from "../middleware/auth.js";
+import { dispatch, notifyUser } from "../utils/notifications.js";
 
 const router = express.Router();
 const DEFAULT_PAGE_SIZE = 25;
@@ -136,6 +137,36 @@ router.patch("/users/:id", async (req, res) => {
     });
 
     invalidateAuthUserCache(user.id);
+
+    const actorName = req.user.fullName;
+
+    if (payload.status === "SUSPENDED") {
+      dispatch(() => notifyUser(user.id, {
+        type: "ACCOUNT_SUSPENDED",
+        title: "Your account has been suspended",
+        body: `Reason: ${data.suspensionReason}. Contact a batch admin if you believe this is a mistake.`,
+        actorName,
+      }));
+    } else if (payload.status === "ACTIVE") {
+      dispatch(() => notifyUser(user.id, {
+        type: "ACCOUNT_REACTIVATED",
+        title: "Your account has been reactivated",
+        body: "You can sign in and use FIT23Hub again. Welcome back.",
+        actorName,
+      }));
+    }
+
+    if (payload.role) {
+      dispatch(() => notifyUser(user.id, {
+        type: "ROLE_CHANGED",
+        title: `You are now ${payload.role === "ADMIN" ? "an administrator" : "a student"}`,
+        body: payload.role === "ADMIN"
+          ? "You now have access to the admin console."
+          : "Your administrator access has been removed.",
+        link: payload.role === "ADMIN" ? "/admin" : "/dashboard",
+        actorName,
+      }));
+    }
 
     return res.json({ user });
   } catch (error) {

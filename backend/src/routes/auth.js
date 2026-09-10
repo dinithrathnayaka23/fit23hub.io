@@ -8,6 +8,7 @@ import { invalidateAuthUserCache, requireAuth } from "../middleware/auth.js";
 import { upload } from "../utils/upload.js";
 import { storeUploadedFile } from "../utils/storage.js";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../utils/mailer.js";
+import { dispatch, notifyAdmins, notifyUser } from "../utils/notifications.js";
 
 const router = express.Router();
 
@@ -307,6 +308,13 @@ router.post("/change-password", requireAuth, async (req, res) => {
 
     invalidateAuthUserCache(user.id);
 
+    dispatch(() => notifyUser(user.id, {
+      type: "PASSWORD_CHANGED",
+      title: "Your password was changed",
+      body: "If this was not you, reset your password immediately and contact a batch admin.",
+      link: "/dashboard/profile",
+    }));
+
     return res.json({ message: "Password updated successfully" });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -414,6 +422,13 @@ router.post("/reset-password", async (req, res) => {
 
     invalidateAuthUserCache(record.userId);
 
+    dispatch(() => notifyUser(record.userId, {
+      type: "PASSWORD_CHANGED",
+      title: "Your password was reset",
+      body: "Your password was reset using an emailed recovery link. If this was not you, contact a batch admin.",
+      link: "/dashboard/profile",
+    }));
+
     return res.json({ message: "Password reset successfully. You can now sign in." });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -463,6 +478,23 @@ router.post("/verify-email", async (req, res) => {
     ]);
 
     invalidateAuthUserCache(record.userId);
+
+    if (!record.user.emailVerifiedAt) {
+      dispatch(() => notifyUser(record.userId, {
+        type: "WELCOME",
+        title: "Welcome to FIT23Hub",
+        body: "Your email is verified and your account is active. Explore materials, recordings and the AI study assistant.",
+        link: "/dashboard",
+      }));
+
+      dispatch(() => notifyAdmins({
+        type: "NEW_STUDENT_JOINED",
+        title: "New student joined",
+        body: `${record.user.fullName} (${record.user.indexNo}) verified their email and joined the batch.`,
+        link: "/admin/users",
+        actorName: record.user.fullName,
+      }));
+    }
 
     return res.json({ message: "Email verified. You can now sign in.", email: record.user.email });
   } catch (error) {
@@ -603,6 +635,13 @@ router.delete("/account", requireAuth, async (req, res) => {
     ]);
 
     invalidateAuthUserCache(userId);
+
+    dispatch(() => notifyAdmins({
+      type: "ACCOUNT_DELETED",
+      title: "A member deleted their account",
+      body: `${user.fullName} (${user.indexNo}) removed their FIT23Hub account. Shared uploads were transferred to the anonymous account.`,
+      link: "/admin/users",
+    }));
 
     return res.json({
       message: "Your account and personal data have been deleted. Materials you shared were transferred to an anonymous account.",
