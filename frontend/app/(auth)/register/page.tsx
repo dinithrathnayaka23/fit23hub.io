@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faEnvelopeCircleCheck, faEye, faEyeSlash, faIdCard, faUserPlus } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faEnvelopeCircleCheck, faEye, faEyeSlash, faIdCard, faUserPlus } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 
@@ -112,7 +112,16 @@ export default function RegisterPage() {
         animate="show"
         whileHover={{ y: -3 }}
       >
-        <motion.p variants={item} className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
+        <motion.div variants={item}>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-xs text-[var(--muted)] transition hover:text-white"
+          >
+            <FontAwesomeIcon icon={faArrowLeft} className="h-3 w-3" />
+            Back to home
+          </Link>
+        </motion.div>
+        <motion.p variants={item} className="mt-4 text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
           FIT23Hub Onboarding
         </motion.p>
         <motion.h1 variants={item} className="mt-2 text-2xl font-semibold">
