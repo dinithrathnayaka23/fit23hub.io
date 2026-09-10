@@ -9,6 +9,7 @@ import {
   faUserPlus,
   faVideo,
   faBell,
+  faBullhorn,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import type { NotificationType } from "./types";
@@ -29,6 +30,7 @@ const META: Record<NotificationType, Meta> = {
   PASSWORD_CHANGED: { icon: faKey, tone: "warning" },
   NEW_STUDENT_JOINED: { icon: faUserPlus, tone: "accent" },
   ACCOUNT_DELETED: { icon: faUserMinus, tone: "danger" },
+  ANNOUNCEMENT_POSTED: { icon: faBullhorn, tone: "warning" },
 };
 
 const FALLBACK: Meta = { icon: faBell, tone: "accent" };
