@@ -3,7 +3,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
   faBook,
-  faCircleNodes,
   faRobot,
   faVideo,
 } from "@fortawesome/free-solid-svg-icons";
@@ -80,12 +79,8 @@ export default function Home() {
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link href="/login" className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm transition hover:bg-[#2a4fb5]">
-                  Student Login
+                  Sign In
                   <FontAwesomeIcon icon={faArrowRight} className="h-4 w-4" />
-                </Link>
-                <Link href="/admin-login" className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted)] transition hover:text-white">
-                  Admin Login
-                  <FontAwesomeIcon icon={faCircleNodes} className="h-4 w-4" />
                 </Link>
                 <Link href="/register" className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted)] transition hover:text-white">
                   Register

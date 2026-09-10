@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { api, ApiError } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
 import SuspendedModal from "@/components/SuspendedModal";
+import { isAdminRole } from "@/lib/types";
 
 const container = {
   hidden: { opacity: 0, y: 20 },
@@ -60,7 +61,8 @@ export default function LoginPage() {
     try {
       const result = await api.login({ email, password });
       setAuth(result.token, result.user);
-      router.push("/dashboard");
+      // One sign-in for everyone; where you land depends on your role.
+      router.push(isAdminRole(result.user.role) ? "/admin" : "/dashboard");
     } catch (err) {
       if (err instanceof ApiError && err.payload?.suspended) {
         setSuspended({
@@ -191,9 +193,6 @@ export default function LoginPage() {
         </motion.form>
         <motion.p variants={item} className="mt-4 text-sm text-[var(--muted)]">
           New student? <Link className="text-[var(--accent)]" href="/register">Create account</Link>
-        </motion.p>
-        <motion.p variants={item} className="mt-2 text-sm text-[var(--muted)]">
-          Batch admin? <Link className="text-[var(--accent)]" href="/admin-login">Use admin login</Link> for admin panel controls.
         </motion.p>
       </motion.div>
       <SuspendedModal

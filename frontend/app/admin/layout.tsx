@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/ui/AppShell";
 import { getStoredUser, getToken } from "@/lib/auth";
+import { isAdminRole } from "@/lib/types";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -12,10 +13,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     const token = getToken();
     const user = getStoredUser();
-    const nextState = !token || !user ? "unauthenticated" : user.role === "ADMIN" ? "authorized" : "forbidden";
+    const nextState = !token || !user ? "unauthenticated" : isAdminRole(user.role) ? "authorized" : "forbidden";
 
     if (nextState === "unauthenticated") {
-      router.replace("/admin-login");
+      router.replace("/login");
     } else if (nextState === "forbidden") {
       router.replace("/dashboard");
     }
