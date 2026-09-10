@@ -5,13 +5,13 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faBell,
   faChevronRight,
   faShieldHalved,
   faUserCircle,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { resolveAssetUrl } from "@/lib/api";
+import NotificationBell from "@/components/ui/NotificationBell";
 import type { User } from "@/lib/types";
 
 type TopBarLink = { href: string; label: string; icon: IconDefinition };
@@ -94,14 +94,7 @@ export default function TopBar({ links, admin, user }: TopBarProps) {
 
       {/* Right: notifications + account */}
       <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          aria-label="Notifications"
-          title="Notifications (coming soon)"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--muted)] transition hover:border-[rgba(56,189,248,0.4)] hover:bg-[rgba(56,189,248,0.08)] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(56,189,248,0.5)]"
-        >
-          <FontAwesomeIcon icon={faBell} className="h-4 w-4" />
-        </button>
+        <NotificationBell admin={admin} />
 
         <div className="relative" ref={menuRef}>
           <button
