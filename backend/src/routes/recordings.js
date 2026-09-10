@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { uploadRecording } from "../utils/upload.js";
+import { dispatch, notifyAllStudents } from "../utils/notifications.js";
 import { storeUploadedFile } from "../utils/storage.js";
 
 const router = express.Router();
@@ -139,6 +140,14 @@ router.post("/", requireAuth, requireRole("ADMIN"), uploadRecordingFile, async (
         uploader: { select: { id: true, fullName: true, role: true } },
       },
     });
+
+    dispatch(() => notifyAllStudents({
+      type: "RECORDING_PUBLISHED",
+      title: "New recording available",
+      body: `${session.title} (${session.module}, Semester ${session.semester}) is ready to watch.`,
+      link: "/dashboard/recordings",
+      actorName: req.user.fullName,
+    }, { excludeUserId: req.user.id }));
 
     return res.status(201).json({ session });
   } catch (error) {
