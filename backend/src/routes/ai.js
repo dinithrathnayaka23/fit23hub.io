@@ -6,6 +6,12 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { upload } from "../utils/upload.js";
 import { deleteLocalTempFile, shouldUseRemoteStorage, storeUploadedFile } from "../utils/storage.js";
+import { generateText, generateTextStream, logAiCall } from "../utils/ai/llm.js";
+import { extractJson } from "../utils/ai/errors.js";
+import { buildCacheKey } from "../utils/ai/cache.js";
+import { checkUserQuota, consumeUserQuota } from "../utils/ai/budget.js";
+import { embedPendingChunks, indexSource, retrieveChunks } from "../utils/ai/retrieval.js";
+import { embeddingsEnabled } from "../utils/ai/embeddings.js";
 
 const router = express.Router();
 const levelValues = ["Level 1", "Level 2", "Level 3", "Level 4"];
@@ -40,24 +46,36 @@ const generationSchema = z.object({
   count: z.coerce.number().int().min(3).max(20).optional(),
 });
 
-function tokenize(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2);
-}
+// Models are asked for JSON; these schemas are the contract. Individual bad
+// entries are dropped rather than failing the whole generation.
+const quizItemSchema = z.object({
+  q: z.string().min(4),
+  options: z.array(z.string().min(1)).length(4),
+  answerIndex: z.number().int().min(0).max(3),
+  why: z.string().optional().default(""),
+});
 
-function scoreSource(promptTokens, sourceText) {
-  if (!sourceText) return 0;
-  const tokens = tokenize(sourceText);
-  if (!tokens.length || !promptTokens.length) return 0;
-  const tokenSet = new Set(tokens);
-  let hits = 0;
-  for (const token of promptTokens) {
-    if (tokenSet.has(token)) hits += 1;
+const flashcardItemSchema = z.object({
+  front: z.string().min(2),
+  back: z.string().min(1),
+});
+
+const MAX_CITATION_CHARS = 2500;
+const MIN_VALID_ARTIFACT_ITEMS = 3;
+
+/** Keeps the context block inside a predictable token budget. */
+function renderCitations(citations, limitChars = MAX_CITATION_CHARS) {
+  const lines = [];
+  let used = 0;
+
+  for (let i = 0; i < citations.length; i += 1) {
+    const line = `[${i + 1}] ${citations[i].title}: ${citations[i].excerpt}`;
+    if (used + line.length > limitChars && lines.length) break;
+    lines.push(line);
+    used += line.length;
   }
-  return hits / Math.max(4, promptTokens.length);
+
+  return lines.join("\n");
 }
 
 function buildSourceExcerpt(text) {
@@ -75,20 +93,6 @@ function conciseFallbackFromCitations(citations) {
     .map((item, idx) => `- [${idx + 1}] ${item.title}: ${buildSourceExcerpt(item.excerpt).slice(0, 140)}`)
     .join("\n");
   return `I could not reach the AI model right now. Here are closest matches from your sources:\n${highlights}`;
-}
-
-function chunkText(text, maxChunkSize = 700, overlap = 140) {
-  const normalized = String(text || "").replace(/\s+/g, " ").trim();
-  if (!normalized) return [];
-  const chunks = [];
-  let start = 0;
-  while (start < normalized.length) {
-    const end = Math.min(normalized.length, start + maxChunkSize);
-    chunks.push(normalized.slice(start, end));
-    if (end >= normalized.length) break;
-    start = Math.max(0, end - overlap);
-  }
-  return chunks;
 }
 
 async function readFileText(file) {
@@ -125,128 +129,50 @@ async function assertProjectOwnership(projectId, userId) {
   return project;
 }
 
-async function requestRouterText({
-  instructionPrompt,
-  maxTokens = 180,
-  temperature = 0.2,
-}) {
-  const hfApiKey = process.env.HF_API_KEY;
-  const model = process.env.HF_MODEL || "Qwen/Qwen2.5-7B-Instruct";
-  const fallbackModel = process.env.HF_FALLBACK_MODEL || "Qwen/Qwen2.5-7B-Instruct";
-  const hfRouterBaseUrl = process.env.HF_ROUTER_BASE_URL || "https://router.huggingface.co";
-  if (!hfApiKey) return { ok: false, status: 500, generated: "", apiMessage: "AI provider is not configured (missing HF_API_KEY)." };
-
-  async function requestRouter(modelId) {
-    const aiResult = await fetch(`${hfRouterBaseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${hfApiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [{ role: "user", content: instructionPrompt }],
-        temperature,
-        max_tokens: maxTokens,
-      }),
-    });
-
-    const rawText = await aiResult.text();
-    let payload = {};
-    try {
-      payload = JSON.parse(rawText);
-    } catch {
-      payload = {};
-    }
-
-    let generated = "";
-    const content = payload?.choices?.[0]?.message?.content;
-    if (typeof content === "string") {
-      generated = content;
-    } else if (Array.isArray(content)) {
-      generated = content.map((part) => part?.text || "").join(" ");
-    }
-
-    const apiMessage = typeof payload?.error === "string"
-      ? payload.error
-      : payload?.error?.message || (aiResult.ok ? "" : rawText.slice(0, 300));
-
-    return {
-      ok: aiResult.ok,
-      status: aiResult.status,
-      generated: generated.trim(),
-      apiMessage,
-    };
-  }
-
-  let result = await requestRouter(model);
-  if (!result.ok && /not supported by any provider/i.test(result.apiMessage) && model !== fallbackModel) {
-    result = await requestRouter(fallbackModel);
-  }
-
-  return result;
-}
-
 async function buildAiAnswer({ prompt, citations, recentChatTurns }) {
   const citationText = citations.length
-    ? citations.map((item, index) => `[${index + 1}] ${item.title}: ${item.excerpt}`).join("\n")
+    ? renderCitations(citations)
     : "No relevant indexed sources were found.";
 
-  let response = conciseFallbackFromCitations(citations);
-
-  const instructionPrompt = [
-    "You are FIT23Hub study assistant.",
-    "Use only the provided context snippets.",
-    "Answer precisely in under 100 words.",
-    "If answer is not present in context, reply exactly: Not found in uploaded AI sources.",
-    "",
+  const buildUser = (context) => [
     `Recent conversation:\n${recentChatTurns || "No previous conversation"}`,
     "",
     `Question:\n${prompt}`,
     "",
-    `Context snippets:\n${citationText}`,
+    `Context snippets:\n${context}`,
     "",
-    "Direct answer:",
+    "Answer in under 100 words using only the snippets above.",
+    "If the answer is not present, reply exactly: Not found in uploaded AI sources.",
   ].join("\n");
 
-  const result = await requestRouterText({ instructionPrompt, maxTokens: 180, temperature: 0.2 });
-  if (!result.ok) {
-    if (result.status === 429 || /quota|rate/i.test(result.apiMessage)) {
-      return "Hugging Face quota/rate limit reached. Try again shortly or use another HF model.";
-    }
+  const result = await generateText({
+    task: "chat",
+    user: buildUser(citationText),
+    trimmedUser: buildUser(renderCitations(citations.slice(0, 3), 1200)),
+    cacheKey: citations.length
+      ? buildCacheKey({ task: "chat", tier: "chat", prompt, citationIds: citations.map((c) => c.id) })
+      : null,
+  });
 
-    if (result.apiMessage) {
-      return `Hugging Face error (${result.status}): ${result.apiMessage}`;
-    }
+  logAiCall("chat", result);
 
-    return `Hugging Face error (${result.status}): Unable to get a valid response from router.`;
+  // Every provider failed: hand back the retrieved snippets rather than an
+  // error string, so the student still gets something useful.
+  if (result.exhausted) {
+    return { text: conciseFallbackFromCitations(citations), degraded: true, meta: null };
   }
 
-  const cleaned = result.generated;
-  return cleaned || response;
-}
-
-function rankSourceChunks({ sources, prompt, limit = 6, allowZeroScores = false }) {
-  const promptTokens = tokenize(prompt);
-  const ranked = sources
-    .flatMap((item) => {
-      const chunks = chunkText(item.contentText);
-      return chunks.map((chunk, index) => ({
-        id: `${item.id}#${index}`,
-        sourceId: item.id,
-        title: item.title,
-        module: item.module,
-        academicYear: item.academicYear,
-        semester: item.semester,
-        excerpt: buildSourceExcerpt(chunk),
-        score: scoreSource(promptTokens, `${item.title} ${item.description || ""} ${chunk}`),
-      }));
-    });
-
-  const filtered = allowZeroScores ? ranked : ranked.filter((item) => item.score > 0);
-  return filtered
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  return {
+    text: result.text,
+    degraded: false,
+    meta: {
+      provider: result.provider,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      fallbackDepth: result.fallbackDepth,
+      cached: Boolean(result.cached),
+    },
+  };
 }
 
 async function getCitationsForTask({ userId, prompt, sourceId, projectId, limit = 6, allowZeroScores = false }) {
@@ -260,7 +186,7 @@ async function getCitationsForTask({ userId, prompt, sourceId, projectId, limit 
     orderBy: { createdAt: "desc" },
   });
 
-  const citations = rankSourceChunks({
+  const citations = await retrieveChunks({
     sources,
     prompt,
     limit,
@@ -319,70 +245,120 @@ async function createAiChatTurn({ chatId, userId, userPrompt, response, citation
 
 async function buildStudyArtifact({ kind, count, citations, recentChatTurns }) {
   if (!citations.length) {
-    return "Not enough uploaded source content found for this request. Upload a relevant source or choose a different source.";
+    return {
+      degraded: true,
+      meta: null,
+      items: [],
+      text: "Not enough uploaded source content found for this request. Upload a relevant source or choose a different source.",
+    };
   }
 
-  const citationText = citations
-    .map((item, index) => `[${index + 1}] ${item.title}: ${item.excerpt}`)
-    .join("\n");
+  const citationText = renderCitations(citations);
 
   const taskInstruction = kind === "quiz"
     ? [
-      `Create exactly ${count} multiple-choice quiz questions.`,
-      "Make it student-friendly and doable for revision: 40% easy, 40% medium, 20% challenging.",
+      `Create exactly ${count} multiple-choice quiz questions for revision.`,
+      "Mix difficulty: roughly 40% easy, 40% medium, 20% challenging.",
       "Avoid trick wording and ambiguous options.",
-      "For each question include 4 options (A-D), then show the correct answer and a one-line explanation.",
-      "Return clean markdown using this structure per item:",
-      "Q1. ...",
-      "A) ...",
-      "B) ...",
-      "C) ...",
-      "D) ...",
-      "Answer: X",
-      "Why: ...",
+      'Reply with JSON only, shaped: {"questions":[{"q":"...","options":["...","...","...","..."],"answerIndex":0,"why":"one line"}]}',
+      "options must always have exactly 4 entries and answerIndex must be 0-3.",
     ].join("\n")
     : [
-      `Create exactly ${count} flashcards.`,
-      "Each flashcard must have a concise Front and Back suitable for quick revision.",
-      "Keep Back short (1-2 lines) and memorization-focused.",
-      "Return clean markdown using this structure per item:",
-      "Card 1",
-      "Front: ...",
-      "Back: ...",
+      `Create exactly ${count} flashcards for quick revision.`,
+      "Keep each back to 1-2 short lines, memorisation-focused.",
+      'Reply with JSON only, shaped: {"cards":[{"front":"...","back":"..."}]}',
     ].join("\n");
 
-  const instructionPrompt = [
-    "You are FIT23Hub study assistant.",
-    "Use only the provided context snippets.",
-    "Do not invent facts outside snippets.",
-    "If snippets are insufficient, include only what is supported.",
-    "",
+  const buildUser = (context) => [
     `Recent conversation:\n${recentChatTurns || "No previous conversation"}`,
     "",
     `Task:\n${taskInstruction}`,
     "",
-    `Context snippets:\n${citationText}`,
+    `Context snippets:\n${context}`,
     "",
-    "Output:",
+    "Use only the snippets. Do not invent facts. Output JSON only, no prose or markdown fences.",
   ].join("\n");
 
-  const result = await requestRouterText({
-    instructionPrompt,
-    maxTokens: kind === "quiz" ? 1200 : 1000,
-    temperature: 0.25,
+  const schema = kind === "quiz" ? quizItemSchema : flashcardItemSchema;
+
+  // Parsing and validation run inside the orchestrator so that a provider
+  // returning the wrong shape is treated as a failure: the chain falls through
+  // to the next provider and the unusable output is never cached.
+  const validate = (text) => {
+    const parsed = extractJson(text);
+    const rawItems = kind === "quiz"
+      ? (Array.isArray(parsed?.questions) ? parsed.questions : Array.isArray(parsed) ? parsed : [])
+      : (Array.isArray(parsed?.cards) ? parsed.cards : Array.isArray(parsed) ? parsed : []);
+
+    const items = rawItems
+      .map((item) => schema.safeParse(item))
+      .filter((outcome) => outcome.success)
+      .map((outcome) => outcome.data);
+
+    if (items.length < Math.min(MIN_VALID_ARTIFACT_ITEMS, count)) return { ok: false };
+    return { ok: true, value: items };
+  };
+
+  const result = await generateText({
+    task: kind,
+    json: true,
+    user: buildUser(citationText),
+    trimmedUser: buildUser(renderCitations(citations.slice(0, 3), 1200)),
+    validate,
+    cacheKey: buildCacheKey({
+      task: kind,
+      tier: `artifact:${count}`,
+      prompt: kind,
+      citationIds: citations.map((c) => c.id),
+    }),
   });
 
-  if (!result.ok) {
-    if (result.status === 429 || /quota|rate/i.test(result.apiMessage)) {
-      return "Hugging Face quota/rate limit reached. Try again shortly or use another HF model.";
-    }
-    if (result.apiMessage) {
-      return `Hugging Face error (${result.status}): ${result.apiMessage}`;
-    }
-    return `Hugging Face error (${result.status}): Unable to generate ${kind}.`;
+  logAiCall(kind, result);
+
+  if (result.exhausted) {
+    return {
+      degraded: true,
+      meta: null,
+      items: [],
+      text: `Could not generate a usable ${kind} right now - the AI providers are unavailable or returned unusable output. Try again shortly, or pick a single source with more detail.`,
+    };
   }
 
-  return result.generated.trim() || `Failed to generate ${kind}. Try again with another source.`;
+  return {
+    degraded: false,
+    items: result.value || [],
+    text: result.text,
+    meta: {
+      provider: result.provider,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      fallbackDepth: result.fallbackDepth,
+      cached: Boolean(result.cached),
+    },
+  };
+}
+
+/**
+ * Blocks the request when a student has spent their daily allowance. The reply
+ * still carries the retrieved snippets so the page stays useful.
+ */
+function enforceQuota(req, res, kind) {
+  const isAdmin = req.user.role === "ADMIN";
+  const quota = checkUserQuota(req.user.id, kind, { isAdmin });
+
+  if (!quota.allowed) {
+    res.status(429).json({
+      message: kind === "chat"
+        ? `You have used today's ${quota.limit} AI questions. The allowance resets at midnight.`
+        : `You have used today's ${quota.limit} quiz/flashcard generations. The allowance resets at midnight.`,
+      quotaExceeded: true,
+      limit: quota.limit,
+      remaining: 0,
+    });
+    return false;
+  }
+
+  return true;
 }
 
 router.get("/sources", requireAuth, async (req, res) => {
@@ -470,6 +446,20 @@ router.post("/sources", requireAuth, upload.single("file"), async (req, res) => 
       },
     });
 
+    // Indexing and embedding happen off the response path: an upload must
+    // never fail or stall because the embedding provider is slow or down.
+    indexSource(source.id, contentText)
+      .then((count) => {
+        if (count && embeddingsEnabled()) {
+          return embedPendingChunks({ sourceId: source.id, limit: 200 });
+        }
+        return 0;
+      })
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error("[ai] background indexing failed:", error);
+      });
+
     return res.status(201).json({ source });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -555,7 +545,7 @@ async function askInChat({ userId, chatId, projectId, prompt }) {
   });
   const recentChatTurns = await getRecentChatTurns(chatId, 8, 1800);
 
-  const response = await buildAiAnswer({
+  const answer = await buildAiAnswer({
     prompt,
     citations: rankedSources,
     recentChatTurns,
@@ -565,12 +555,14 @@ async function askInChat({ userId, chatId, projectId, prompt }) {
     chatId,
     userId,
     userPrompt: prompt,
-    response,
+    response: answer.text,
     citations: rankedSources,
   });
 
   return {
-    response,
+    response: answer.text,
+    degraded: answer.degraded,
+    meta: answer.meta,
     message: {
       ...assistantMessage,
       citations: rankedSources,
@@ -587,6 +579,7 @@ router.post("/chats/:chatId/query", requireAuth, async (req, res) => {
       select: { id: true, projectId: true },
     });
     if (!chat) return res.status(404).json({ message: "Chat not found" });
+    if (!enforceQuota(req, res, "chat")) return undefined;
 
     const result = await askInChat({
       userId: req.user.id,
@@ -594,6 +587,7 @@ router.post("/chats/:chatId/query", requireAuth, async (req, res) => {
       projectId: chat.projectId || undefined,
       prompt,
     });
+    if (!result.degraded) consumeUserQuota(req.user.id, "chat", { isAdmin: req.user.role === "ADMIN" });
     return res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -606,6 +600,8 @@ router.post("/chats/:chatId/query", requireAuth, async (req, res) => {
 router.post("/query", requireAuth, async (req, res) => {
   try {
     const { prompt } = querySchema.parse(req.body);
+    if (!enforceQuota(req, res, "chat")) return undefined;
+
     const existingChat = await prisma.aiChat.findFirst({
       where: { userId: req.user.id },
       orderBy: { updatedAt: "desc" },
@@ -625,12 +621,131 @@ router.post("/query", requireAuth, async (req, res) => {
       projectId: selectedChat.projectId || undefined,
       prompt,
     });
+    if (!result.degraded) consumeUserQuota(req.user.id, "chat", { isAdmin: req.user.role === "ADMIN" });
     return res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: "Invalid payload", errors: error.issues });
     }
     return res.status(500).json({ message: "Failed to generate AI response" });
+  }
+});
+
+router.post("/chats/:chatId/query/stream", requireAuth, async (req, res) => {
+  const send = (event, data) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const { prompt } = querySchema.parse(req.body);
+
+    const chat = await prisma.aiChat.findFirst({
+      where: { id: req.params.chatId, userId: req.user.id },
+      select: { id: true, projectId: true },
+    });
+    if (!chat) return res.status(404).json({ message: "Chat not found" });
+    if (!enforceQuota(req, res, "chat")) return undefined;
+
+    const { citations } = await getCitationsForTask({
+      userId: req.user.id,
+      prompt,
+      projectId: chat.projectId || undefined,
+      limit: 6,
+      allowZeroScores: false,
+    });
+    const recentChatTurns = await getRecentChatTurns(req.params.chatId, 8, 1800);
+
+    // Headers must go out before the first token so the browser starts reading.
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders?.();
+
+    send("meta", { citations });
+
+    // If the client disconnects mid-answer, stop paying for tokens.
+    let aborted = false;
+    req.on("close", () => { aborted = true; });
+
+    const citationText = citations.length ? renderCitations(citations) : "No relevant indexed sources were found.";
+    const buildUser = (context) => [
+      `Recent conversation:\n${recentChatTurns || "No previous conversation"}`,
+      "",
+      `Question:\n${prompt}`,
+      "",
+      `Context snippets:\n${context}`,
+      "",
+      "Answer in under 100 words using only the snippets above.",
+      "If the answer is not present, reply exactly: Not found in uploaded AI sources.",
+    ].join("\n");
+
+    const result = await generateTextStream({
+      task: "chat",
+      user: buildUser(citationText),
+      trimmedUser: buildUser(renderCitations(citations.slice(0, 3), 1200)),
+      onToken: (chunk) => {
+        if (!aborted) send("token", { t: chunk });
+      },
+    });
+
+    logAiCall("chat", result);
+
+    if (aborted) {
+      res.end();
+      return undefined;
+    }
+
+    // Nothing streamed at all: fall back to the retrieved snippets so the
+    // student still gets something usable.
+    const finalText = result.text || conciseFallbackFromCitations(citations);
+    const degraded = !result.text;
+
+    if (degraded) send("token", { t: finalText });
+
+    const assistantMessage = await createAiChatTurn({
+      chatId: req.params.chatId,
+      userId: req.user.id,
+      userPrompt: prompt,
+      response: finalText,
+      citations,
+    });
+
+    if (!degraded) consumeUserQuota(req.user.id, "chat", { isAdmin: req.user.role === "ADMIN" });
+
+    send("done", {
+      degraded,
+      truncated: Boolean(result.truncated),
+      meta: result.provider
+        ? {
+          provider: result.provider,
+          model: result.model,
+          latencyMs: result.latencyMs,
+          fallbackDepth: result.fallbackDepth,
+          cached: false,
+        }
+        : null,
+      message: { ...assistantMessage, citations },
+    });
+
+    res.end();
+    return undefined;
+  } catch (error) {
+    if (res.headersSent) {
+      // Mid-stream failure: tell the client through the stream, not a status.
+      send("error", { message: "The answer stopped unexpectedly. Please try again." });
+      res.end();
+      return undefined;
+    }
+
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid payload", errors: error.issues });
+    }
+
+    return res.status(500).json({ message: "Failed to stream AI response" });
   }
 });
 
@@ -644,6 +759,7 @@ router.post("/chats/:chatId/quiz", requireAuth, async (req, res) => {
       select: { id: true, projectId: true },
     });
     if (!chat) return res.status(404).json({ message: "Chat not found" });
+    if (!enforceQuota(req, res, "artifact")) return undefined;
 
     const { sources, citations } = await getCitationsForTask({
       userId: req.user.id,
@@ -659,7 +775,7 @@ router.post("/chats/:chatId/quiz", requireAuth, async (req, res) => {
     }
 
     const recentChatTurns = await getRecentChatTurns(req.params.chatId, 8, 1800);
-    const response = await buildStudyArtifact({
+    const artifact = await buildStudyArtifact({
       kind: "quiz",
       count: questionCount,
       citations,
@@ -671,12 +787,17 @@ router.post("/chats/:chatId/quiz", requireAuth, async (req, res) => {
       chatId: req.params.chatId,
       userId: req.user.id,
       userPrompt,
-      response,
+      response: artifact.text,
       citations,
     });
 
+    if (!artifact.degraded) consumeUserQuota(req.user.id, "artifact", { isAdmin: req.user.role === "ADMIN" });
+
     return res.json({
-      response,
+      response: artifact.text,
+      quiz: artifact.items,
+      degraded: artifact.degraded,
+      meta: artifact.meta,
       message: {
         ...assistantMessage,
         citations,
@@ -700,6 +821,7 @@ router.post("/chats/:chatId/flashcards", requireAuth, async (req, res) => {
       select: { id: true, projectId: true },
     });
     if (!chat) return res.status(404).json({ message: "Chat not found" });
+    if (!enforceQuota(req, res, "artifact")) return undefined;
 
     const { sources, citations } = await getCitationsForTask({
       userId: req.user.id,
@@ -715,7 +837,7 @@ router.post("/chats/:chatId/flashcards", requireAuth, async (req, res) => {
     }
 
     const recentChatTurns = await getRecentChatTurns(req.params.chatId, 8, 1800);
-    const response = await buildStudyArtifact({
+    const artifact = await buildStudyArtifact({
       kind: "flashcards",
       count: cardCount,
       citations,
@@ -727,12 +849,17 @@ router.post("/chats/:chatId/flashcards", requireAuth, async (req, res) => {
       chatId: req.params.chatId,
       userId: req.user.id,
       userPrompt,
-      response,
+      response: artifact.text,
       citations,
     });
 
+    if (!artifact.degraded) consumeUserQuota(req.user.id, "artifact", { isAdmin: req.user.role === "ADMIN" });
+
     return res.json({
-      response,
+      response: artifact.text,
+      flashcards: artifact.items,
+      degraded: artifact.degraded,
+      meta: artifact.meta,
       message: {
         ...assistantMessage,
         citations,
