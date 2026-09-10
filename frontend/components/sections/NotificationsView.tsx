@@ -14,6 +14,7 @@ import {
   faTrashCan,
 } from "@fortawesome/free-solid-svg-icons";
 import { api } from "@/lib/api";
+import { ErrorState } from "@/components/ui/StateCard";
 import { getToken } from "@/lib/auth";
 import { TONE_CHIP, formatRelativeTime, notificationMeta } from "@/lib/notification-meta";
 import type { AppNotification } from "@/lib/types";
@@ -31,7 +32,7 @@ export default function NotificationsView() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   const [now, setNow] = useState(() => Date.now());
   const [clearing, setClearing] = useState(false);
 
@@ -52,9 +53,9 @@ export default function NotificationsView() {
       setUnread(result.unread);
       setTotal(result.pagination.total);
       setTotalPages(result.pagination.totalPages);
-      setError("");
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load notifications");
+      setError(err);
     } finally {
       inFlight.current = false;
       setLoading(false);
@@ -121,7 +122,7 @@ export default function NotificationsView() {
       setTotalPages(1);
       setPage(1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clear notifications");
+      setError(err);
     } finally {
       setClearing(false);
     }
@@ -181,7 +182,20 @@ export default function NotificationsView() {
         </div>
       </div>
 
-      {error && <p className="px-4 py-3 text-sm text-red-300">{error}</p>}
+      {Boolean(error) && items.length === 0 ? (
+        <div className="p-4">
+          <ErrorState
+            error={error}
+            fallback="We could not load your notifications."
+            onRetry={() => load(page, filter)}
+            retrying={loading}
+          />
+        </div>
+      ) : Boolean(error) ? (
+        <p className="mx-4 my-3 rounded-lg border border-[rgba(250,204,21,0.4)] bg-[rgba(250,204,21,0.08)] px-3 py-2 text-xs text-amber-200">
+          This list could not be refreshed, so it may be out of date.
+        </p>
+      ) : null}
 
       {!loading && items.length === 0 && !error && (
         <div className="px-4 py-16 text-center">

@@ -45,6 +45,7 @@ export default function AdminProfilePage() {
   const [user, setUser] = useState<User | null>(getStoredUser());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imageError, setImageError] = useState("");
+  const [staleProfile, setStaleProfile] = useState(false);
   const [savingImage, setSavingImage] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -77,8 +78,11 @@ export default function AdminProfilePage() {
       .then((result) => {
         setUser(result.user);
         setAuth(token, result.user);
+        setStaleProfile(false);
       })
-      .catch(() => {});
+      // The page still renders from the details stored at sign-in, so this is
+      // a staleness warning rather than a failure.
+      .catch(() => setStaleProfile(true));
   }, [token]);
 
   const onUploadImage = async (event: FormEvent) => {
@@ -185,6 +189,11 @@ export default function AdminProfilePage() {
 
   return (
     <div className="space-y-4">
+      {staleProfile && (
+        <p className="rounded-lg border border-[rgba(250,204,21,0.4)] bg-[rgba(250,204,21,0.08)] px-3 py-2 text-xs text-amber-200">
+          We could not refresh your profile just now, so these details come from your last sign-in.
+        </p>
+      )}
       <section className="glass-card p-6">
         <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-[var(--accent)]">
           <FontAwesomeIcon icon={faUserShield} className="h-3 w-3" />
