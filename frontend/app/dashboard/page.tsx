@@ -77,6 +77,9 @@ export default function DashboardPage() {
     const timer = setInterval(() => {
       api.getLiveSessions(token)
         .then((liveData) => setLiveSessions(liveData.sessions))
+        // Deliberately silent: the sessions already on screen stay, and the
+        // next tick retries in 30s. Surfacing this would flash an error at a
+        // student who is reading a page that is working.
         .catch(() => {});
     }, 30000);
 
