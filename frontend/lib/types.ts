@@ -16,6 +16,7 @@ export type User = {
   suspensionReason?: string | null;
   emailVerifiedAt?: string | null;
   createdAt?: string;
+  deletedAt?: string | null;
 };
 
 export type MaterialCategory =
@@ -36,12 +37,17 @@ export type Material = {
   fileUrl?: string | null;
   externalUrl?: string | null;
   createdAt: string;
+  deletedAt?: string | null;
   uploader: {
     id: string;
     fullName: string;
     indexNo: string;
     role: UserRole;
   };
+  deletedBy?: {
+    id: string;
+    fullName: string;
+  } | null;
 };
 
 export type RecordedSession = {
