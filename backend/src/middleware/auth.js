@@ -50,11 +50,12 @@ export async function requireAuth(req, res, next) {
         status: true,
         emailVerifiedAt: true,
         isSystemAccount: true,
+        deletedAt: true,
         createdAt: true,
       },
     });
 
-    if (!user || user.status !== "ACTIVE" || user.isSystemAccount) {
+    if (!user || user.status !== "ACTIVE" || user.isSystemAccount || user.deletedAt) {
       return res.status(401).json({ message: "User is not active" });
     }
 

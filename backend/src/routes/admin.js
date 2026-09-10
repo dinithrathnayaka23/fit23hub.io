@@ -19,15 +19,44 @@ function parsePageSize(value, fallback = DEFAULT_PAGE_SIZE) {
   return Math.min(MAX_PAGE_SIZE, Math.floor(parsed));
 }
 
+const userSelect = {
+  id: true,
+  fullName: true,
+  indexNo: true,
+  email: true,
+  role: true,
+  status: true,
+  suspensionReason: true,
+  createdAt: true,
+};
+
+/**
+ * Mirrors the guard rails on PATCH /users/:id: the platform owner is
+ * untouchable, ordinary admins manage students only, and nobody archives
+ * themselves out of the console.
+ */
+function refuseArchive(actor, target) {
+  if (target.role === "SUPER_ADMIN") {
+    return "The super admin account cannot be removed.";
+  }
+  if (target.id === actor.id) {
+    return "You cannot remove your own account from here.";
+  }
+  if (actor.role !== "SUPER_ADMIN" && target.role === "ADMIN") {
+    return "Only the super admin can remove other administrators.";
+  }
+  return null;
+}
+
 router.use(requireAuth, requireRole(...ADMIN_ROLES));
 
 router.get("/overview", async (_req, res) => {
   // Exclude internal system accounts (e.g. the "Deleted Account" tombstone that
   // inherits content from deleted users) so these totals match the user list.
   const [users, students, admins, materials, recorded, live, liveNow] = await Promise.all([
-    prisma.user.count({ where: { isSystemAccount: false } }),
-    prisma.user.count({ where: { role: "STUDENT", isSystemAccount: false } }),
-    prisma.user.count({ where: { role: { in: ADMIN_ROLES }, isSystemAccount: false } }),
+    prisma.user.count({ where: { isSystemAccount: false, deletedAt: null } }),
+    prisma.user.count({ where: { role: "STUDENT", isSystemAccount: false, deletedAt: null } }),
+    prisma.user.count({ where: { role: { in: ADMIN_ROLES }, isSystemAccount: false, deletedAt: null } }),
     prisma.material.count({ where: { deletedAt: null } }),
     prisma.recordedSession.count(),
     prisma.liveSession.count(),
@@ -51,7 +80,7 @@ router.get("/users", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const page = parsePage(req.query.page, 1);
   const pageSize = parsePageSize(req.query.pageSize, DEFAULT_PAGE_SIZE);
-  const baseWhere = { isSystemAccount: false };
+  const baseWhere = { isSystemAccount: false, deletedAt: null };
   const where = q
     ? {
       ...baseWhere,
@@ -67,16 +96,7 @@ router.get("/users", async (req, res) => {
     prisma.user.count({ where }),
     prisma.user.findMany({
       where,
-      select: {
-        id: true,
-        fullName: true,
-        indexNo: true,
-        email: true,
-        role: true,
-        status: true,
-        suspensionReason: true,
-        createdAt: true,
-      },
+      select: userSelect,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -107,10 +127,10 @@ router.patch("/users/:id", async (req, res) => {
 
     const target = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, role: true, isSystemAccount: true },
+      select: { id: true, role: true, isSystemAccount: true, deletedAt: true },
     });
 
-    if (!target || target.isSystemAccount) {
+    if (!target || target.isSystemAccount || target.deletedAt) {
       return res.status(404).json({ message: "User not found" });
     }
 
@@ -149,16 +169,7 @@ router.patch("/users/:id", async (req, res) => {
     const user = await prisma.user.update({
       where: { id: req.params.id },
       data,
-      select: {
-        id: true,
-        fullName: true,
-        indexNo: true,
-        email: true,
-        role: true,
-        status: true,
-        suspensionReason: true,
-        createdAt: true,
-      },
+      select: userSelect,
     });
 
     invalidateAuthUserCache(user.id);
@@ -201,6 +212,91 @@ router.patch("/users/:id", async (req, res) => {
 
     return res.status(500).json({ message: "Failed to update user" });
   }
+});
+
+router.get("/users/archived", async (req, res) => {
+  const page = parsePage(req.query.page, 1);
+  const pageSize = parsePageSize(req.query.pageSize, DEFAULT_PAGE_SIZE);
+  const where = { isSystemAccount: false, deletedAt: { not: null } };
+
+  const [total, users] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      select: { ...userSelect, deletedAt: true, deletedById: true },
+      orderBy: { deletedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return res.json({
+    users,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    },
+  });
+});
+
+router.delete("/users/:id", async (req, res) => {
+  const target = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, role: true, isSystemAccount: true, deletedAt: true },
+  });
+
+  if (!target || target.isSystemAccount || target.deletedAt) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  const refusal = refuseArchive(req.user, target);
+  if (refusal) {
+    return res.status(403).json({ message: refusal });
+  }
+
+  const user = await prisma.user.update({
+    where: { id: target.id },
+    data: { deletedAt: new Date(), deletedById: req.user.id },
+    select: userSelect,
+  });
+
+  // The account is blocked from here on, so drop the cached auth row that
+  // would otherwise keep an open session alive for up to 15 seconds.
+  invalidateAuthUserCache(user.id);
+
+  return res.json({ user, message: "Account removed. It can be restored from the archive." });
+});
+
+router.post("/users/:id/restore", async (req, res) => {
+  const target = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, role: true, isSystemAccount: true, deletedAt: true },
+  });
+
+  if (!target || target.isSystemAccount || !target.deletedAt) {
+    return res.status(404).json({ message: "Removed account not found" });
+  }
+
+  if (req.user.role !== "SUPER_ADMIN" && target.role === "ADMIN") {
+    return res.status(403).json({ message: "Only the super admin can restore other administrators." });
+  }
+
+  const user = await prisma.user.update({
+    where: { id: target.id },
+    data: { deletedAt: null, deletedById: null },
+    select: userSelect,
+  });
+
+  dispatch(() => notifyUser(user.id, {
+    type: "ACCOUNT_REACTIVATED",
+    title: "Your account has been restored",
+    body: "An administrator restored your account. You can sign in to FIT23Hub again.",
+    actorName: req.user.fullName,
+  }));
+
+  return res.json({ user });
 });
 
 export default router;
