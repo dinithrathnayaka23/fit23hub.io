@@ -28,7 +28,7 @@ router.get("/overview", async (_req, res) => {
     prisma.user.count({ where: { isSystemAccount: false } }),
     prisma.user.count({ where: { role: "STUDENT", isSystemAccount: false } }),
     prisma.user.count({ where: { role: { in: ADMIN_ROLES }, isSystemAccount: false } }),
-    prisma.material.count(),
+    prisma.material.count({ where: { deletedAt: null } }),
     prisma.recordedSession.count(),
     prisma.liveSession.count(),
     prisma.liveSession.count({ where: { isLive: true } }),
