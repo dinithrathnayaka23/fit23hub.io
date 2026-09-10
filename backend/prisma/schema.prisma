@@ -173,6 +173,8 @@ model AiSource {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  chunks       AiSourceChunk[]
+
   @@index([uploaderId, createdAt])
   @@index([projectId, createdAt])
   @@index([semester, academicYear, createdAt])
@@ -246,4 +248,23 @@ model Notification {
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
+}
+
+/// One retrievable slice of an AiSource. The embedding is stored as a JSON
+/// array of floats so this works on plain Postgres without the pgvector
+/// extension; embedding stays null until the vector is generated, and
+/// retrieval falls back to keyword scoring for those rows.
+model AiSourceChunk {
+  id         String   @id @default(cuid())
+  sourceId   String
+  source     AiSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  idx        Int
+  text       String
+  embedding  String?
+  embeddedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@unique([sourceId, idx])
+  @@index([sourceId, idx])
+  @@index([embeddedAt])
 }
