@@ -1,4 +1,16 @@
-import type { AiAnswerMeta, AiFlashcard, AiQuizQuestion, AppNotification, LiveSession, Material, MaterialCategory, RecordedSession, User } from "./types";
+import type { AiAnswerMeta, AiFlashcard, AiQuizQuestion, Announcement, AnnouncementCategory, AnnouncementReader, AppNotification, LiveSession, Material, MaterialCategory, RecordedSession, User } from "./types";
+
+export type AnnouncementInput = {
+  title: string;
+  body: string;
+  category: AnnouncementCategory;
+  module?: string;
+  linkUrl?: string;
+  pinned?: boolean;
+  eventAt?: string;
+  expiresAt?: string;
+  publish?: boolean;
+};
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 type PaginationMeta = { page: number; pageSize: number; total: number; totalPages: number };
@@ -246,6 +258,89 @@ export const api = {
 
   async purgeMaterial(token: string, id: string) {
     return request<{ message: string }>(`/materials/admin/${id}/purge`, { method: "DELETE" }, token);
+  },
+
+  async getAnnouncements(token: string, query?: {
+    category?: AnnouncementCategory;
+    filter?: "upcoming" | "pending";
+    page?: number;
+    pageSize?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (query?.category) params.set("category", query.category);
+    if (query?.filter) params.set("filter", query.filter);
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.pageSize) params.set("pageSize", String(query.pageSize));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<{ announcements: Announcement[]; pending: number; pagination: PaginationMeta }>(
+      `/announcements${suffix}`,
+      {},
+      token,
+    );
+  },
+
+  async getUpcomingAnnouncements(token: string, limit = 3) {
+    return request<{ announcements: Announcement[] }>(`/announcements/upcoming?limit=${limit}`, {}, token);
+  },
+
+  async acknowledgeAnnouncement(token: string, id: string) {
+    return request<{ acknowledged: boolean; acknowledgedCount: number }>(
+      `/announcements/${id}/acknowledge`,
+      { method: "POST" },
+      token,
+    );
+  },
+
+  async adminAnnouncements(token: string, query?: { archived?: boolean; page?: number; pageSize?: number }) {
+    const params = new URLSearchParams();
+    if (query?.archived) params.set("archived", "true");
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.pageSize) params.set("pageSize", String(query.pageSize));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<{ announcements: Announcement[]; audience: number; pagination: PaginationMeta }>(
+      `/announcements/admin/all${suffix}`,
+      {},
+      token,
+    );
+  },
+
+  async createAnnouncement(token: string, payload: AnnouncementInput) {
+    return request<{ announcement: Announcement }>("/announcements/admin", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, token);
+  },
+
+  async updateAnnouncement(token: string, id: string, payload: AnnouncementInput) {
+    return request<{ announcement: Announcement }>(`/announcements/admin/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }, token);
+  },
+
+  async publishAnnouncement(token: string, id: string) {
+    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/publish`, { method: "POST" }, token);
+  },
+
+  async unpublishAnnouncement(token: string, id: string) {
+    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/unpublish`, { method: "POST" }, token);
+  },
+
+  async archiveAnnouncement(token: string, id: string) {
+    return request<{ message: string }>(`/announcements/admin/${id}`, { method: "DELETE" }, token);
+  },
+
+  async restoreAnnouncement(token: string, id: string) {
+    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/restore`, { method: "POST" }, token);
+  },
+
+  async announcementReaders(token: string, id: string) {
+    return request<{
+      announcement: { id: string; title: string; publishedAt: string | null };
+      acknowledged: AnnouncementReader[];
+      pending: AnnouncementReader[];
+      audience: number;
+    }>(`/announcements/admin/${id}/acknowledgements`, {}, token);
   },
 
   async getRecordedSessions(token: string, query?: { module?: string; semester?: number; academicYear?: string; page?: number; pageSize?: number }) {

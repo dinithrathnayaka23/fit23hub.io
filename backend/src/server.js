@@ -14,6 +14,7 @@ import adminRoutes from "./routes/admin.js";
 import aiRoutes from "./routes/ai.js";
 import overviewRoutes from "./routes/overview.js";
 import notificationRoutes from "./routes/notifications.js";
+import announcementRoutes from "./routes/announcements.js";
 import { ensureDefaultAdmin, ensureSuperAdmin } from "./seed.js";
 import { prisma } from "./prisma.js";
 import { aiRateLimiter, apiRateLimiter, authRateLimiter, buildCorsOptions, securityConfig } from "./config/security.js";
@@ -69,6 +70,7 @@ app.use("/api/admin", apiRateLimiter, adminRoutes);
 app.use("/api/ai", aiRateLimiter, aiRoutes);
 app.use("/api/overview", apiRateLimiter, overviewRoutes);
 app.use("/api/notifications", apiRateLimiter, notificationRoutes);
+app.use("/api/announcements", apiRateLimiter, announcementRoutes);
 
 app.use((err, _req, res, _next) => {
   // eslint-disable-next-line no-console

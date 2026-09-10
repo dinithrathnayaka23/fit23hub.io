@@ -98,7 +98,43 @@ export type NotificationType =
   | "ROLE_CHANGED"
   | "PASSWORD_CHANGED"
   | "NEW_STUDENT_JOINED"
-  | "ACCOUNT_DELETED";
+  | "ACCOUNT_DELETED"
+  | "ANNOUNCEMENT_POSTED";
+
+export type AnnouncementCategory =
+  | "GENERAL"
+  | "EXAM"
+  | "DEADLINE"
+  | "SCHEDULE_CHANGE"
+  | "EVENT"
+  | "RESOURCE";
+
+export type Announcement = {
+  id: string;
+  title: string;
+  body: string;
+  category: AnnouncementCategory;
+  module?: string | null;
+  linkUrl?: string | null;
+  pinned: boolean;
+  eventAt?: string | null;
+  publishedAt?: string | null;
+  expiresAt?: string | null;
+  createdAt: string;
+  deletedAt?: string | null;
+  author: { id: string; fullName: string; role: UserRole };
+  deletedBy?: { id: string; fullName: string } | null;
+  /** Present on the student board only. */
+  acknowledged?: boolean;
+  acknowledgedCount: number;
+};
+
+export type AnnouncementReader = {
+  id: string;
+  fullName: string;
+  indexNo: string;
+  acknowledgedAt?: string;
+};
 
 export type AppNotification = {
   id: string;

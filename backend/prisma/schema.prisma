@@ -31,6 +31,16 @@ enum NotificationType {
   PASSWORD_CHANGED
   NEW_STUDENT_JOINED
   ACCOUNT_DELETED
+  ANNOUNCEMENT_POSTED
+}
+
+enum AnnouncementCategory {
+  GENERAL
+  EXAM
+  DEADLINE
+  SCHEDULE_CHANGE
+  EVENT
+  RESOURCE
 }
 
 enum MaterialCategory {
@@ -68,6 +78,9 @@ model User {
   passwordResets PasswordResetToken[]
   emailVerifications EmailVerificationToken[]
   notifications Notification[]
+  announcements Announcement[]  @relation("AnnouncementAuthor")
+  archivedAnnouncements Announcement[] @relation("AnnouncementArchivedBy")
+  announcementAcks AnnouncementAck[]
 
   @@index([role, status])
   @@index([createdAt])
@@ -241,6 +254,48 @@ model EmailVerificationToken {
 
   @@index([userId, createdAt])
   @@index([expiresAt])
+}
+
+/// A noticeboard post written by an admin. Unlike a Notification it is durable
+/// content students browse and come back to, it can carry the date something is
+/// due, and it records who has acknowledged it.
+model Announcement {
+  id          String               @id @default(cuid())
+  title       String
+  body        String
+  category    AnnouncementCategory @default(GENERAL)
+  module      String?
+  linkUrl     String?
+  pinned      Boolean              @default(false)
+  /// When the exam sits, the form is due, or the event happens.
+  eventAt     DateTime?
+  /// Null while the announcement is still a draft.
+  publishedAt DateTime?
+  /// After this the notice drops off the student board on its own.
+  expiresAt   DateTime?
+  authorId    String
+  author      User                 @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+  deletedAt   DateTime?
+  deletedById String?
+  deletedBy   User?                @relation("AnnouncementArchivedBy", fields: [deletedById], references: [id])
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  acknowledgements AnnouncementAck[]
+
+  @@index([deletedAt, publishedAt])
+  @@index([eventAt])
+}
+
+model AnnouncementAck {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  acknowledgedAt DateTime     @default(now())
+
+  @@unique([announcementId, userId])
+  @@index([userId])
 }
 
 model Notification {

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBookOpen,
+  faBullhorn,
   faChartSimple,
   faCircleNodes,
   faHouse,
@@ -35,6 +36,7 @@ type ShellLink = {
 
 const dashboardLinks: ShellLink[] = [
   { href: "/dashboard", label: "Overview", icon: faHouse },
+  { href: "/dashboard/announcements", label: "Announcements", icon: faBullhorn },
   { href: "/dashboard/materials", label: "Materials", icon: faBookOpen },
   { href: "/dashboard/recordings", label: "Recordings", icon: faVideo },
   { href: "/dashboard/live", label: "Kuppi Live", icon: faCircleNodes },
@@ -45,6 +47,7 @@ const dashboardLinks: ShellLink[] = [
 
 const adminLinks: ShellLink[] = [
   { href: "/admin", label: "Overview", icon: faChartSimple },
+  { href: "/admin/announcements", label: "Announcements", icon: faBullhorn },
   { href: "/admin/users", label: "Users", icon: faUsers },
   { href: "/admin/materials", label: "Materials", icon: faBookOpen },
   { href: "/admin/recordings", label: "Recordings", icon: faVideo },
