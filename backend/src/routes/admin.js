@@ -1,7 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { invalidateAuthUserCache, requireAuth, requireRole } from "../middleware/auth.js";
+import { ADMIN_ROLES, invalidateAuthUserCache, requireAuth, requireRole } from "../middleware/auth.js";
 import { dispatch, notifyUser } from "../utils/notifications.js";
 
 const router = express.Router();
@@ -19,7 +19,7 @@ function parsePageSize(value, fallback = DEFAULT_PAGE_SIZE) {
   return Math.min(MAX_PAGE_SIZE, Math.floor(parsed));
 }
 
-router.use(requireAuth, requireRole("ADMIN"));
+router.use(requireAuth, requireRole(...ADMIN_ROLES));
 
 router.get("/overview", async (_req, res) => {
   // Exclude internal system accounts (e.g. the "Deleted Account" tombstone that
@@ -27,7 +27,7 @@ router.get("/overview", async (_req, res) => {
   const [users, students, admins, materials, recorded, live, liveNow] = await Promise.all([
     prisma.user.count({ where: { isSystemAccount: false } }),
     prisma.user.count({ where: { role: "STUDENT", isSystemAccount: false } }),
-    prisma.user.count({ where: { role: "ADMIN", isSystemAccount: false } }),
+    prisma.user.count({ where: { role: { in: ADMIN_ROLES }, isSystemAccount: false } }),
     prisma.material.count(),
     prisma.recordedSession.count(),
     prisma.liveSession.count(),
@@ -105,7 +105,32 @@ router.patch("/users/:id", async (req, res) => {
     const payload = schema.parse(req.body);
     const data = {};
 
+    const target = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, role: true, isSystemAccount: true },
+    });
+
+    if (!target || target.isSystemAccount) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const actorIsSuperAdmin = req.user.role === "SUPER_ADMIN";
+
+    // The platform owner is immutable - no demotion, no suspension, by anyone.
+    if (target.role === "SUPER_ADMIN") {
+      return res.status(403).json({ message: "The super admin account cannot be modified." });
+    }
+
+    // Ordinary admins manage students only; promoting or demoting an admin is
+    // reserved for the super admin.
+    if (!actorIsSuperAdmin && target.role === "ADMIN") {
+      return res.status(403).json({ message: "Only the super admin can manage other administrators." });
+    }
+
     if (payload.role) {
+      if (!actorIsSuperAdmin) {
+        return res.status(403).json({ message: "Only the super admin can change roles." });
+      }
       data.role = payload.role;
     }
 
