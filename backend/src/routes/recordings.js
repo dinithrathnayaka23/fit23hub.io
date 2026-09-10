@@ -2,7 +2,7 @@ import express from "express";
 import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { ADMIN_ROLES, requireAuth, requireRole } from "../middleware/auth.js";
 import { uploadRecording } from "../utils/upload.js";
 import { dispatch, notifyAllStudents } from "../utils/notifications.js";
 import { storeUploadedFile } from "../utils/storage.js";
@@ -103,7 +103,7 @@ function uploadRecordingFile(req, res, next) {
   });
 }
 
-router.post("/", requireAuth, requireRole("ADMIN"), uploadRecordingFile, async (req, res) => {
+router.post("/", requireAuth, requireRole(...ADMIN_ROLES), uploadRecordingFile, async (req, res) => {
   try {
     if (!isMp4Upload(req.file)) {
       return res.status(400).json({ message: "Only MP4 files are supported for recording uploads" });
@@ -159,7 +159,7 @@ router.post("/", requireAuth, requireRole("ADMIN"), uploadRecordingFile, async (
   }
 });
 
-router.put("/:id", requireAuth, requireRole("ADMIN"), uploadRecordingFile, async (req, res) => {
+router.put("/:id", requireAuth, requireRole(...ADMIN_ROLES), uploadRecordingFile, async (req, res) => {
   try {
     if (!isMp4Upload(req.file)) {
       return res.status(400).json({ message: "Only MP4 files are supported for recording uploads" });
@@ -208,7 +208,7 @@ router.put("/:id", requireAuth, requireRole("ADMIN"), uploadRecordingFile, async
   }
 });
 
-router.delete("/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.delete("/:id", requireAuth, requireRole(...ADMIN_ROLES), async (req, res) => {
   await prisma.recordedSession.delete({ where: { id: req.params.id } });
   return res.json({ message: "Recorded session deleted" });
 });

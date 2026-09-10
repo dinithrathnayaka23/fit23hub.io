@@ -70,6 +70,11 @@ export async function requireAuth(req, res, next) {
   }
 }
 
+/** Both roles reach the admin console; only SUPER_ADMIN may change roles. */
+export const ADMIN_ROLES = ["ADMIN", "SUPER_ADMIN"];
+
+export const isAdminRole = (role) => ADMIN_ROLES.includes(role);
+
 export function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {

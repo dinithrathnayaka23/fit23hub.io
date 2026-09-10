@@ -11,6 +11,7 @@ datasource db {
 enum UserRole {
   STUDENT
   ADMIN
+  SUPER_ADMIN
 }
 
 enum UserStatus {

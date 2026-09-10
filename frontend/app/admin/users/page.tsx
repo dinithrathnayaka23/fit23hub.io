@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { getStoredUser, getToken } from "@/lib/auth";
 import type { User } from "@/lib/types";
 
 export default function AdminUsersPage() {
@@ -16,6 +16,8 @@ export default function AdminUsersPage() {
   const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
   const token = useMemo(() => getToken(), []);
+  // Granting or revoking admin access is reserved for the platform owner.
+  const isSuperAdmin = useMemo(() => getStoredUser()?.role === "SUPER_ADMIN", []);
 
   useEffect(() => {
     setMounted(true);
@@ -38,8 +40,12 @@ export default function AdminUsersPage() {
   const updateUser = async (id: string, payload: { role?: "STUDENT" | "ADMIN"; status?: "ACTIVE" | "SUSPENDED"; reason?: string }) => {
     if (!token) return;
     setError("");
-    await api.updateUser(token, id, payload);
-    await refresh();
+    try {
+      await api.updateUser(token, id, payload);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update user");
+    }
   };
 
   const openSuspendModal = (user: User) => {
@@ -84,7 +90,19 @@ export default function AdminUsersPage() {
             <tr key={user.id} className="border-b border-[var(--border)]/60 align-top">
               <td className="px-4 py-3">{user.fullName}</td>
               <td className="px-4 py-3 text-[var(--muted)]">{user.indexNo}</td>
-              <td className="px-4 py-3">{user.role}</td>
+              <td className="px-4 py-3">
+                <span
+                  className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${
+                    user.role === "SUPER_ADMIN"
+                      ? "border-[rgba(250,204,21,0.45)] bg-[rgba(250,204,21,0.12)] text-amber-200"
+                      : user.role === "ADMIN"
+                        ? "border-[rgba(56,189,248,0.45)] bg-[rgba(56,189,248,0.12)] text-[#c8eeff]"
+                        : "border-[var(--border)] text-[var(--muted)]"
+                  }`}
+                >
+                  {user.role === "SUPER_ADMIN" ? "Super Admin" : user.role === "ADMIN" ? "Admin" : "Student"}
+                </span>
+              </td>
               <td className="px-4 py-3">
                 <span className={user.status === "SUSPENDED" ? "text-red-300" : "text-emerald-300"}>{user.status}</span>
                 {user.status === "SUSPENDED" && user.suspensionReason && (
@@ -94,32 +112,50 @@ export default function AdminUsersPage() {
                 )}
               </td>
               <td className="px-4 py-3">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] hover:text-white"
-                    type="button"
-                    onClick={() => updateUser(user.id, { role: user.role === "ADMIN" ? "STUDENT" : "ADMIN" })}
-                  >
-                    Toggle Role
-                  </button>
-                  {user.status === "ACTIVE" ? (
-                    <button
-                      className="rounded-lg border border-red-400/40 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-200"
-                      type="button"
-                      onClick={() => openSuspendModal(user)}
-                    >
-                      Suspend
-                    </button>
-                  ) : (
-                    <button
-                      className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] hover:text-white"
-                      type="button"
-                      onClick={() => updateUser(user.id, { status: "ACTIVE" })}
-                    >
-                      Activate
-                    </button>
-                  )}
-                </div>
+                {user.role === "SUPER_ADMIN" ? (
+                  <span className="text-xs text-[var(--muted)]">Platform owner &mdash; locked</span>
+                ) : !isSuperAdmin && user.role === "ADMIN" ? (
+                  <span className="text-xs text-[var(--muted)]">Managed by the super admin</span>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {isSuperAdmin && (
+                      user.role === "ADMIN" ? (
+                        <button
+                          className="rounded-lg border border-[rgba(250,204,21,0.4)] px-2 py-1 text-xs text-amber-200 transition hover:bg-[rgba(250,204,21,0.12)]"
+                          type="button"
+                          onClick={() => updateUser(user.id, { role: "STUDENT" })}
+                        >
+                          Revoke admin
+                        </button>
+                      ) : (
+                        <button
+                          className="rounded-lg border border-[rgba(56,189,248,0.4)] px-2 py-1 text-xs text-[#c8eeff] transition hover:bg-[rgba(56,189,248,0.12)]"
+                          type="button"
+                          onClick={() => updateUser(user.id, { role: "ADMIN" })}
+                        >
+                          Make admin
+                        </button>
+                      )
+                    )}
+                    {user.status === "ACTIVE" ? (
+                      <button
+                        className="rounded-lg border border-red-400/40 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                        type="button"
+                        onClick={() => openSuspendModal(user)}
+                      >
+                        Suspend
+                      </button>
+                    ) : (
+                      <button
+                        className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] hover:text-white"
+                        type="button"
+                        onClick={() => updateUser(user.id, { status: "ACTIVE" })}
+                      >
+                        Activate
+                      </button>
+                    )}
+                  </div>
+                )}
               </td>
             </tr>
           ))}

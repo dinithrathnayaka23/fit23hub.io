@@ -1,4 +1,8 @@
-export type UserRole = "STUDENT" | "ADMIN";
+export type UserRole = "STUDENT" | "ADMIN" | "SUPER_ADMIN";
+
+/** Both roles reach the admin console; only SUPER_ADMIN can change roles. */
+export const ADMIN_ROLES: UserRole[] = ["ADMIN", "SUPER_ADMIN"];
+export const isAdminRole = (role?: UserRole | null) => role === "ADMIN" || role === "SUPER_ADMIN";
 export type UserStatus = "ACTIVE" | "SUSPENDED";
 
 export type User = {

@@ -1,7 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { ADMIN_ROLES, requireAuth, requireRole } from "../middleware/auth.js";
 import { dispatch, notifyAllStudents } from "../utils/notifications.js";
 
 const router = express.Router();
@@ -97,7 +97,7 @@ router.get("/", requireAuth, async (req, res) => {
   });
 });
 
-router.post("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.post("/", requireAuth, requireRole(...ADMIN_ROLES), async (req, res) => {
   try {
     const payload = liveSchema.parse(req.body);
     const derivedLevel = levelFromSemester(payload.semester);
@@ -164,7 +164,7 @@ router.post("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
   }
 });
 
-router.put("/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.put("/:id", requireAuth, requireRole(...ADMIN_ROLES), async (req, res) => {
   try {
     const payload = liveSchema.partial().parse(req.body);
     const existing = await prisma.liveSession.findUnique({ where: { id: req.params.id } });
@@ -211,7 +211,7 @@ router.put("/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
   }
 });
 
-router.patch("/:id/status", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.patch("/:id/status", requireAuth, requireRole(...ADMIN_ROLES), async (req, res) => {
   const schema = z.object({ isLive: z.boolean() });
 
   try {
@@ -249,7 +249,7 @@ router.patch("/:id/status", requireAuth, requireRole("ADMIN"), async (req, res) 
   }
 });
 
-router.delete("/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.delete("/:id", requireAuth, requireRole(...ADMIN_ROLES), async (req, res) => {
   await prisma.liveSession.delete({ where: { id: req.params.id } });
   return res.json({ message: "Live session deleted" });
 });

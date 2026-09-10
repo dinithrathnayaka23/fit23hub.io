@@ -14,7 +14,7 @@ import adminRoutes from "./routes/admin.js";
 import aiRoutes from "./routes/ai.js";
 import overviewRoutes from "./routes/overview.js";
 import notificationRoutes from "./routes/notifications.js";
-import { ensureDefaultAdmin } from "./seed.js";
+import { ensureDefaultAdmin, ensureSuperAdmin } from "./seed.js";
 import { prisma } from "./prisma.js";
 import { aiRateLimiter, apiRateLimiter, authRateLimiter, buildCorsOptions, securityConfig } from "./config/security.js";
 import { uploadsDir } from "./utils/paths.js";
@@ -78,6 +78,7 @@ app.use((err, _req, res, _next) => {
 
 async function bootstrap() {
   await ensureDefaultAdmin();
+  await ensureSuperAdmin();
 
   const server = app.listen(PORT, () => {
     // eslint-disable-next-line no-console

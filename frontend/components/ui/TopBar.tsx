@@ -150,7 +150,7 @@ export default function TopBar({ links, admin, user }: TopBarProps) {
               <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] px-3 py-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(56,189,248,0.4)] bg-[rgba(56,189,248,0.12)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#c8eeff]">
                   <FontAwesomeIcon icon={faShieldHalved} className="h-2.5 w-2.5" />
-                  {user?.role || (admin ? "ADMIN" : "STUDENT")}
+                  {user?.role === "SUPER_ADMIN" ? "SUPER ADMIN" : user?.role || (admin ? "ADMIN" : "STUDENT")}
                 </span>
                 {user?.indexNo && (
                   <span className="truncate text-[11px] text-[var(--muted)]">{user.indexNo}</span>

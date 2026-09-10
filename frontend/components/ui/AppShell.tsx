@@ -75,7 +75,7 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
             <h2 className="mt-2 text-xl font-bold leading-tight">
               <span className="bg-gradient-to-r from-[#8de6ff] via-[#38bdf8] to-[#6f9dff] bg-clip-text text-transparent">FIT23HUB</span>
             </h2>
-            <p className="mt-1 text-xs text-[#bfdef2]">{admin ? "Admin Panel" : "Student Space"}</p>
+            <p className="mt-1 text-xs text-[#bfdef2]">{admin ? (user?.role === "SUPER_ADMIN" ? "Super Admin Panel" : "Admin Panel") : "Student Space"}</p>
           </div>
           {user && (
             <p className="mt-2 shrink-0 truncate text-xs text-[var(--muted)]">

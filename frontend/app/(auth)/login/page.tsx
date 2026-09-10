@@ -4,11 +4,12 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRightToBracket, faEnvelope, faEnvelopeCircleCheck, faEye, faEyeSlash, faLock } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faArrowRightToBracket, faEnvelope, faEnvelopeCircleCheck, faEye, faEyeSlash, faLock } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
 import { api, ApiError } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
 import SuspendedModal from "@/components/SuspendedModal";
+import { isAdminRole } from "@/lib/types";
 
 const container = {
   hidden: { opacity: 0, y: 20 },
@@ -60,7 +61,8 @@ export default function LoginPage() {
     try {
       const result = await api.login({ email, password });
       setAuth(result.token, result.user);
-      router.push("/dashboard");
+      // One sign-in for everyone; where you land depends on your role.
+      router.push(isAdminRole(result.user.role) ? "/admin" : "/dashboard");
     } catch (err) {
       if (err instanceof ApiError && err.payload?.suspended) {
         setSuspended({
@@ -100,7 +102,16 @@ export default function LoginPage() {
         animate="show"
         whileHover={{ y: -3 }}
       >
-        <motion.p variants={item} className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
+        <motion.div variants={item}>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-xs text-[var(--muted)] transition hover:text-white"
+          >
+            <FontAwesomeIcon icon={faArrowLeft} className="h-3 w-3" />
+            Back to home
+          </Link>
+        </motion.div>
+        <motion.p variants={item} className="mt-4 text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
           FIT23Hub Authentication
         </motion.p>
         <motion.h1 variants={item} className="mt-2 text-2xl font-semibold">
@@ -191,9 +202,6 @@ export default function LoginPage() {
         </motion.form>
         <motion.p variants={item} className="mt-4 text-sm text-[var(--muted)]">
           New student? <Link className="text-[var(--accent)]" href="/register">Create account</Link>
-        </motion.p>
-        <motion.p variants={item} className="mt-2 text-sm text-[var(--muted)]">
-          Batch admin? <Link className="text-[var(--accent)]" href="/admin-login">Use admin login</Link> for admin panel controls.
         </motion.p>
       </motion.div>
       <SuspendedModal

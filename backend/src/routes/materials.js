@@ -1,7 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { ADMIN_ROLES, requireAuth, requireRole } from "../middleware/auth.js";
 import { upload } from "../utils/upload.js";
 import { storeUploadedFile } from "../utils/storage.js";
 import { dispatch, notifyAllStudents, notifyAdmins } from "../utils/notifications.js";
@@ -244,7 +244,7 @@ router.post("/:id/download", requireAuth, async (req, res) => {
   return res.json({ url: material.fileUrl });
 });
 
-router.delete("/admin/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.delete("/admin/:id", requireAuth, requireRole(...ADMIN_ROLES), async (req, res) => {
   await prisma.material.delete({ where: { id: req.params.id } });
   return res.json({ message: "Material deleted" });
 });
