@@ -631,6 +631,8 @@ router.delete("/account", requireAuth, async (req, res) => {
       prisma.material.updateMany({ where: { uploaderId: userId }, data: { uploaderId: tombstone.id } }),
       prisma.recordedSession.updateMany({ where: { uploaderId: userId }, data: { uploaderId: tombstone.id } }),
       prisma.liveSession.updateMany({ where: { managerId: userId }, data: { managerId: tombstone.id } }),
+      prisma.announcement.updateMany({ where: { authorId: userId }, data: { authorId: tombstone.id } }),
+      prisma.announcementAck.deleteMany({ where: { userId } }),
       prisma.aiChatMessage.deleteMany({ where: { chat: { userId } } }),
       prisma.aiChat.deleteMany({ where: { userId } }),
       prisma.aiSource.deleteMany({ where: { uploaderId: userId } }),
