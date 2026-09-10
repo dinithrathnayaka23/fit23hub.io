@@ -6,6 +6,7 @@ import { faBoxArchive, faRotateLeft, faTrashCan } from "@fortawesome/free-solid-
 import MaterialCard from "@/components/cards/MaterialCard";
 import { api } from "@/lib/api";
 import { getStoredUser, getToken } from "@/lib/auth";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { Material, MaterialCategory } from "@/lib/types";
 
 const categories: { value: MaterialCategory; label: string }[] = [
@@ -36,6 +37,8 @@ export default function AdminMaterialsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
 
   const token = useMemo(() => getToken(), []);
   // Permanent deletion is irreversible, so only the platform owner sees it.
@@ -51,9 +54,17 @@ export default function AdminMaterialsPage() {
     setArchived(bin.materials);
   }, [token]);
 
-  useEffect(() => {
-    refresh().catch((err) => setError(err instanceof Error ? err.message : "Failed to load materials"));
+  const reload = useCallback(() => {
+    setLoading(true);
+    refresh()
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(err))
+      .finally(() => setLoading(false));
   }, [refresh]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const run = async (id: string, action: () => Promise<unknown>, message: string) => {
     setError("");
@@ -157,10 +168,24 @@ export default function AdminMaterialsPage() {
         </p>
       )}
 
-      {list.length === 0 ? (
-        <p className="glass-card p-5 text-sm text-[var(--muted)]">
-          {view === "active" ? "No materials published yet." : "The archive is empty."}
-        </p>
+      {loadError ? (
+        <ErrorState
+          error={loadError}
+          fallback="We could not load the materials list."
+          onRetry={reload}
+          retrying={loading}
+        />
+      ) : loading && list.length === 0 ? (
+        <LoadingState label="Loading materials..." />
+      ) : list.length === 0 ? (
+        <EmptyState
+          title={view === "active" ? "Nothing published yet" : "The archive is empty"}
+          hint={
+            view === "active"
+              ? "Use the form above to share the first material with the batch."
+              : "Material you archive lands here and can be restored at any time."
+          }
+        />
       ) : (
         list.map((item) => (
           <div key={item.id} className="space-y-2">

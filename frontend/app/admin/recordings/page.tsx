@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api, resolveAssetUrl } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { RecordedSession } from "@/lib/types";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
@@ -25,14 +26,25 @@ export default function AdminRecordingsPage() {
   const [file, setFile] = useState<File | undefined>(undefined);
   const [error, setError] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     if (!token) return;
 
+    setLoading(true);
     api.getRecordedSessions(token)
-      .then((result) => setSessions(result.sessions))
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load recorded sessions"));
+      .then((result) => {
+        setSessions(result.sessions);
+        setLoadError(null);
+      })
+      .catch((err) => setLoadError(err))
+      .finally(() => setLoading(false));
   }, [token]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const refreshSessions = async () => {
     if (!token) return;
@@ -140,7 +152,23 @@ export default function AdminRecordingsPage() {
 
       {error && <p className="text-sm text-red-300">{error}</p>}
 
-      {sessions.map((session) => (
+      {loadError ? (
+        <ErrorState
+          error={loadError}
+          fallback="We could not load the recordings."
+          onRetry={reload}
+          retrying={loading}
+        />
+      ) : loading && sessions.length === 0 ? (
+        <LoadingState label="Loading recordings..." />
+      ) : sessions.length === 0 ? (
+        <EmptyState
+          title="No recordings yet"
+          hint="Upload an MP4 or paste a recording URL above to publish the first one."
+        />
+      ) : null}
+
+      {!loadError && sessions.map((session) => (
         <article key={session.id} className="glass-card p-4">
           <h3 className="text-lg font-semibold">{session.title}</h3>
           <p className="mt-1 text-sm text-[var(--muted)]">{session.module} | {session.academicYear} | Semester {session.semester}</p>
