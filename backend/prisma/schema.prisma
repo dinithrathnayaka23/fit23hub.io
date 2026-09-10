@@ -18,6 +18,20 @@ enum UserStatus {
   SUSPENDED
 }
 
+enum NotificationType {
+  WELCOME
+  MATERIAL_UPLOADED
+  RECORDING_PUBLISHED
+  LIVE_SCHEDULED
+  LIVE_STARTED
+  ACCOUNT_SUSPENDED
+  ACCOUNT_REACTIVATED
+  ROLE_CHANGED
+  PASSWORD_CHANGED
+  NEW_STUDENT_JOINED
+  ACCOUNT_DELETED
+}
+
 enum MaterialCategory {
   NOTES
   LECTURE_SLIDES
@@ -49,6 +63,7 @@ model User {
   aiChats      AiChat[]
   passwordResets PasswordResetToken[]
   emailVerifications EmailVerificationToken[]
+  notifications Notification[]
 
   @@index([role, status])
   @@index([createdAt])
@@ -215,4 +230,20 @@ model EmailVerificationToken {
 
   @@index([userId, createdAt])
   @@index([expiresAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  actorName String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
