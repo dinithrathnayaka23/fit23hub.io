@@ -17,6 +17,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { clearAuth, getStoredUser } from "@/lib/auth";
+import TopBar from "@/components/ui/TopBar";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -46,6 +47,7 @@ const adminLinks: ShellLink[] = [
   { href: "/admin/materials", label: "Materials", icon: faBookOpen },
   { href: "/admin/recordings", label: "Recordings", icon: faVideo },
   { href: "/admin/live", label: "Kuppi Live", icon: faCircleNodes },
+  { href: "/admin/profile", label: "Profile", icon: faUserCircle },
 ];
 
 export default function AppShell({ children, title, subtitle, admin = false }: AppShellProps) {
@@ -116,14 +118,18 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
           </div>
         </aside>
 
-        <main className="custom-scroll w-full space-y-4 overflow-y-auto pr-1">
-          <header className="glass-card grid-surface p-5 md:p-6">
-            <p className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">{admin ? "Moderator" : "Academic"}</p>
-            <h1 className="mt-1 text-2xl font-semibold md:text-3xl">{title}</h1>
-            <p className="mt-2 max-w-2xl text-sm text-[var(--muted)]">{subtitle}</p>
-          </header>
-          {children}
-        </main>
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <TopBar links={links} admin={admin} user={user} />
+
+          <main className="custom-scroll min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <header className="glass-card grid-surface p-5 md:p-6">
+              <p className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">{admin ? "Moderator" : "Academic"}</p>
+              <h1 className="mt-1 text-2xl font-semibold md:text-3xl">{title}</h1>
+              <p className="mt-2 max-w-2xl text-sm text-[var(--muted)]">{subtitle}</p>
+            </header>
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );

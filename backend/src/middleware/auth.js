@@ -50,6 +50,7 @@ export async function requireAuth(req, res, next) {
         status: true,
         emailVerifiedAt: true,
         isSystemAccount: true,
+        createdAt: true,
       },
     });
 
