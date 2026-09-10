@@ -20,6 +20,7 @@ export const securityConfig = {
   authMaxRequests: asInt(process.env.AUTH_RATE_LIMIT_MAX, 50),
   apiWindowMs: asInt(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
   apiMaxRequests: asInt(process.env.API_RATE_LIMIT_MAX, 300),
+  aiMaxRequests: asInt(process.env.AI_RATE_LIMIT_MAX, 60),
 };
 
 export const authRateLimiter = rateLimit({
@@ -30,9 +31,11 @@ export const authRateLimiter = rateLimit({
   message: { message: "Too many authentication requests. Please try again later." },
 });
 
+// AI calls are far more expensive than ordinary API reads, so they get their
+// own (tighter) allowance on top of the per-student daily quota.
 export const aiRateLimiter = rateLimit({
   windowMs: securityConfig.apiWindowMs,
-  limit: securityConfig.apiMaxRequests,
+  limit: securityConfig.aiMaxRequests,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many AI requests. Please try again later." },
