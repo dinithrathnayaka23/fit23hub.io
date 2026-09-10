@@ -2,6 +2,7 @@ import express from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+import { dispatch, notifyAllStudents } from "../utils/notifications.js";
 
 const router = express.Router();
 const levelValues = ["Level 1", "Level 2", "Level 3", "Level 4"];
@@ -130,6 +131,29 @@ router.post("/", requireAuth, requireRole("ADMIN"), async (req, res) => {
       },
     });
 
+    const scheduledLabel = session.scheduledFor
+      ? new Date(session.scheduledFor).toUTCString()
+      : "soon";
+
+    dispatch(() => notifyAllStudents(
+      session.isLive
+        ? {
+          type: "LIVE_STARTED",
+          title: "Kuppi session is live now",
+          body: `${session.title} (${session.module}) has started. Join in.`,
+          link: "/dashboard/live",
+          actorName: req.user.fullName,
+        }
+        : {
+          type: "LIVE_SCHEDULED",
+          title: "Kuppi session scheduled",
+          body: `${session.title} (${session.module}) is scheduled for ${scheduledLabel}.`,
+          link: "/dashboard/live",
+          actorName: req.user.fullName,
+        },
+      { excludeUserId: req.user.id },
+    ));
+
     return res.status(201).json({ session });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -204,6 +228,16 @@ router.patch("/:id/status", requireAuth, requireRole("ADMIN"), async (req, res) 
         manager: { select: { id: true, fullName: true, role: true } },
       },
     });
+
+    if (payload.isLive) {
+      dispatch(() => notifyAllStudents({
+        type: "LIVE_STARTED",
+        title: "Kuppi session is live now",
+        body: `${session.title} (${session.module}) has started. Join in.`,
+        link: "/dashboard/live",
+        actorName: req.user.fullName,
+      }, { excludeUserId: req.user.id }));
+    }
 
     return res.json({ session });
   } catch (error) {

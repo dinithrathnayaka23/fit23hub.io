@@ -11,6 +11,7 @@ import {
   faHouse,
   faRobot,
   faPowerOff,
+  faBell,
   faUsers,
   faUserCircle,
   faVideo,
@@ -38,6 +39,7 @@ const dashboardLinks: ShellLink[] = [
   { href: "/dashboard/recordings", label: "Recordings", icon: faVideo },
   { href: "/dashboard/live", label: "Kuppi Live", icon: faCircleNodes },
   { href: "/dashboard/ai", label: "AI Learning", icon: faRobot },
+  { href: "/dashboard/notifications", label: "Notifications", icon: faBell },
   { href: "/dashboard/profile", label: "Profile", icon: faUserCircle },
 ];
 
@@ -47,6 +49,7 @@ const adminLinks: ShellLink[] = [
   { href: "/admin/materials", label: "Materials", icon: faBookOpen },
   { href: "/admin/recordings", label: "Recordings", icon: faVideo },
   { href: "/admin/live", label: "Kuppi Live", icon: faCircleNodes },
+  { href: "/admin/notifications", label: "Notifications", icon: faBell },
   { href: "/admin/profile", label: "Profile", icon: faUserCircle },
 ];
 

@@ -1,4 +1,4 @@
-import type { LiveSession, Material, MaterialCategory, RecordedSession, User } from "./types";
+import type { AppNotification, LiveSession, Material, MaterialCategory, RecordedSession, User } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 type PaginationMeta = { page: number; pageSize: number; total: number; totalPages: number };
@@ -127,6 +127,39 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify(payload),
     }, token);
+  },
+
+  async getNotifications(token: string, query?: { page?: number; pageSize?: number; filter?: "all" | "unread" }) {
+    const params = new URLSearchParams();
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.pageSize) params.set("pageSize", String(query.pageSize));
+    if (query?.filter) params.set("filter", query.filter);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<{
+      notifications: AppNotification[];
+      unread: number;
+      pagination: PaginationMeta;
+    }>(`/notifications${suffix}`, {}, token);
+  },
+
+  async getUnreadNotificationCount(token: string) {
+    return request<{ unread: number }>("/notifications/unread-count", {}, token);
+  },
+
+  async markNotificationRead(token: string, id: string) {
+    return request<{ message: string; unread: number }>(`/notifications/${id}/read`, { method: "PATCH" }, token);
+  },
+
+  async markAllNotificationsRead(token: string) {
+    return request<{ message: string; unread: number }>("/notifications/read-all", { method: "POST" }, token);
+  },
+
+  async deleteNotification(token: string, id: string) {
+    return request<{ message: string; unread: number }>(`/notifications/${id}`, { method: "DELETE" }, token);
+  },
+
+  async clearNotifications(token: string) {
+    return request<{ message: string; unread: number }>("/notifications", { method: "DELETE" }, token);
   },
 
   async uploadProfileImage(token: string, file: File) {

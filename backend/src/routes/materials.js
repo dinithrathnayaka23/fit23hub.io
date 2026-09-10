@@ -4,6 +4,7 @@ import { prisma } from "../prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { upload } from "../utils/upload.js";
 import { storeUploadedFile } from "../utils/storage.js";
+import { dispatch, notifyAllStudents, notifyAdmins } from "../utils/notifications.js";
 
 const router = express.Router();
 
@@ -120,6 +121,25 @@ router.post("/", requireAuth, upload.single("file"), async (req, res) => {
         },
       },
     });
+
+    const actorName = req.user.fullName;
+    dispatch(() => notifyAllStudents({
+      type: "MATERIAL_UPLOADED",
+      title: "New material shared",
+      body: `${material.title} was added to ${material.module} (Semester ${material.semester}).`,
+      link: "/dashboard/materials",
+      actorName,
+    }, { excludeUserId: req.user.id }));
+
+    if (req.user.role !== "ADMIN") {
+      dispatch(() => notifyAdmins({
+        type: "MATERIAL_UPLOADED",
+        title: "Student uploaded material",
+        body: `${actorName} shared "${material.title}" under ${material.module}.`,
+        link: "/admin/materials",
+        actorName,
+      }));
+    }
 
     return res.status(201).json({ material });
   } catch (error) {
