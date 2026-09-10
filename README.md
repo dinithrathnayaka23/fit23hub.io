@@ -2,10 +2,6 @@
 
 > **The Official Digital Platform for the Faculty of Information Technology Batch 23**
 >
-> Preview
-> <p align="center">
-  <img src="frontend/public/Screenshot 2026-05-24 234141.png" alt="FIT23Hub Preview" width="100%">
-</p>
 
 FIT23Hub is a centralized web platform designed to connect students, streamline academic collaboration, and provide a modern digital experience for the Faculty of Information Technology (FIT) Batch 23.
 
