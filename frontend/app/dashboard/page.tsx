@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faArrowRight } from "@fortawesome/free-solid-svg-icons";
 import FadeIn from "@/components/animations/FadeIn";
 import StatCard from "@/components/ui/StatCard";
 import VideoCard from "@/components/cards/VideoCard";
+import {
+  ANNOUNCEMENT_CATEGORIES,
+  URGENCY_STRIP,
+  countdownLabel,
+  formatEventDate,
+  urgencyOf,
+} from "@/lib/announcement-meta";
 import { api, resolveAssetUrl } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type { LiveSession, RecordedSession } from "@/lib/types";
+import type { Announcement, LiveSession, RecordedSession } from "@/lib/types";
 
 type OverviewStats = {
   users: number;
@@ -22,6 +32,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<OverviewStats | null>(null);
   const [recordings, setRecordings] = useState<RecordedSession[]>([]);
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
+  const [upcoming, setUpcoming] = useState<Announcement[]>([]);
   const [nowMs, setNowMs] = useState<number | null>(null);
 
   useEffect(() => {
@@ -37,6 +48,10 @@ export default function DashboardPage() {
       .catch(() => {
         setStats(null);
       });
+
+    api.getUpcomingAnnouncements(token, 3)
+      .then((result) => setUpcoming(result.announcements))
+      .catch(() => setUpcoming([]));
 
     const timer = setInterval(() => {
       api.getLiveSessions(token)
@@ -105,6 +120,61 @@ export default function DashboardPage() {
           )}
         </section>
       </FadeIn>
+
+      {upcoming.length > 0 && (
+        <FadeIn delay={0.06}>
+          <section className="glass-card p-5 md:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-[var(--accent)]">Coming Up</p>
+                <h2 className="mt-1 text-lg font-semibold">Deadlines and dates ahead</h2>
+              </div>
+              <Link
+                href="/dashboard/announcements"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:text-white"
+              >
+                Noticeboard
+                <FontAwesomeIcon icon={faArrowRight} className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <ul className="mt-4 space-y-2">
+              {upcoming.map((item) => {
+                const category = ANNOUNCEMENT_CATEGORIES[item.category] ?? ANNOUNCEMENT_CATEGORIES.GENERAL;
+                const urgency = item.eventAt && nowMs ? urgencyOf(item.eventAt, nowMs) : "later";
+
+                return (
+                  <li
+                    key={item.id}
+                    className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border px-3 py-2.5 ${URGENCY_STRIP[urgency]}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${category.chip}`}
+                        >
+                          <FontAwesomeIcon icon={category.icon} className="h-2.5 w-2.5" />
+                          {category.label}
+                        </span>
+                        {item.acknowledged === false && (
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--accent)]">
+                            Not acknowledged
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 truncate text-sm font-medium text-white">{item.title}</p>
+                    </div>
+                    <div className="text-right text-xs">
+                      {item.eventAt && <p className="font-semibold">{formatEventDate(item.eventAt)}</p>}
+                      {item.eventAt && nowMs && <p className="opacity-90">{countdownLabel(item.eventAt, nowMs)}</p>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </FadeIn>
+      )}
 
       <section className="grid gap-4 md:grid-cols-3">
         <FadeIn><StatCard label="Materials" value={String(stats?.materials ?? 0)} hint="Total shared materials" /></FadeIn>
