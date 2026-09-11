@@ -9,6 +9,7 @@ import AnnouncementCard from "@/components/cards/AnnouncementCard";
 import { ANNOUNCEMENT_CATEGORIES, CATEGORY_ORDER } from "@/lib/announcement-meta";
 import { api, type AnnouncementInput } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { Announcement, AnnouncementCategory, AnnouncementReader } from "@/lib/types";
 
 type View = "live" | "drafts" | "archived";
@@ -67,6 +68,8 @@ export default function AdminAnnouncementsPage() {
   const [busyId, setBusyId] = useState("");
   const [nowMs, setNowMs] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
   const [readers, setReaders] = useState<{
     title: string;
     acknowledged: AnnouncementReader[];
@@ -93,9 +96,17 @@ export default function AdminAnnouncementsPage() {
     setAudience(live.audience);
   }, [token]);
 
-  useEffect(() => {
-    refresh().catch((err) => setError(err instanceof Error ? err.message : "Failed to load announcements"));
+  const reload = useCallback(() => {
+    setLoading(true);
+    refresh()
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(err))
+      .finally(() => setLoading(false));
   }, [refresh]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -340,14 +351,32 @@ export default function AdminAnnouncementsPage() {
       {error && <p className="text-sm text-red-300">{error}</p>}
       {notice && <p className="text-sm text-emerald-300">{notice}</p>}
 
-      {list.length === 0 ? (
-        <p className="glass-card p-5 text-sm text-[var(--muted)]">
-          {view === "live"
-            ? "Nothing published yet."
-            : view === "drafts"
-              ? "No drafts waiting."
-              : "The archive is empty."}
-        </p>
+      {loadError ? (
+        <ErrorState
+          error={loadError}
+          fallback="We could not load the announcements."
+          onRetry={reload}
+          retrying={loading}
+        />
+      ) : loading && list.length === 0 ? (
+        <LoadingState label="Loading announcements..." />
+      ) : list.length === 0 ? (
+        <EmptyState
+          title={
+            view === "live"
+              ? "Nothing published yet"
+              : view === "drafts"
+                ? "No drafts waiting"
+                : "The archive is empty"
+          }
+          hint={
+            view === "live"
+              ? "Post the first notice using the form above."
+              : view === "drafts"
+                ? "Notices you save without publishing wait here until you are ready."
+                : "Notices you archive land here and can be restored at any time."
+          }
+        />
       ) : (
         list.map((item) => (
           <div key={item.id} className="space-y-2">

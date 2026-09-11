@@ -17,6 +17,7 @@ export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(getStoredUser());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  const [staleProfile, setStaleProfile] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -49,8 +50,11 @@ export default function ProfilePage() {
       .then((result) => {
         setUser(result.user);
         setAuth(token, result.user);
+        setStaleProfile(false);
       })
-      .catch(() => {});
+      // The page still renders from the details stored at sign-in, so this is
+      // a staleness warning rather than a failure.
+      .catch(() => setStaleProfile(true));
   }, [token]);
 
   const onUploadImage = async (event: FormEvent) => {
@@ -156,6 +160,11 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-4">
+      {staleProfile && (
+        <p className="rounded-lg border border-[rgba(250,204,21,0.4)] bg-[rgba(250,204,21,0.08)] px-3 py-2 text-xs text-amber-200">
+          We could not refresh your profile just now, so these details come from your last sign-in.
+        </p>
+      )}
       <section className="glass-card p-6">
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">

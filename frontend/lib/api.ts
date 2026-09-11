@@ -27,6 +27,47 @@ export class ApiError extends Error {
   }
 }
 
+/** Status 0 means the request never reached the server: offline, DNS, or timeout. */
+export const isConnectionError = (error: unknown) => error instanceof ApiError && error.status === 0;
+
+export const isAuthError = (error: unknown) => error instanceof ApiError && error.status === 401;
+
+/** Turns anything thrown into a sentence that is safe to show a student. */
+export function describeError(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+const REQUEST_TIMEOUT_MS = 20_000;
+// Uploads legitimately take far longer than a normal request.
+const UPLOAD_TIMEOUT_MS = 180_000;
+
+const STATUS_MESSAGES: Record<number, string> = {
+  400: "Some of those details were not valid. Check them and try again.",
+  401: "Your session has expired. Please sign in again.",
+  403: "You do not have permission to do that.",
+  404: "We could not find what you were looking for.",
+  409: "That conflicts with something that already exists.",
+  413: "That file is too large to upload.",
+  429: "Too many requests in a row. Wait a moment and try again.",
+};
+
+function messageForStatus(status: number) {
+  if (STATUS_MESSAGES[status]) return STATUS_MESSAGES[status];
+  if (status >= 500) return "The server ran into a problem. Please try again in a moment.";
+  return "That request could not be completed. Please try again.";
+}
+
+function connectionMessage(timedOut: boolean) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "You are offline. Reconnect to the internet and try again.";
+  }
+  return timedOut
+    ? "The server is taking too long to respond. Check your connection and try again."
+    : "Cannot reach the FIT23Hub server. It may be restarting - try again in a moment.";
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -43,20 +84,31 @@ async function request<T>(
   }
 
   const url = `${API_BASE}${path}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    options.body instanceof FormData ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
+  );
+
   let response: Response;
   try {
     response = await fetch(url, {
       ...options,
       headers,
+      signal: controller.signal,
     });
   } catch {
-    throw new Error(`Cannot connect to backend API (${API_BASE}). Check backend server and NEXT_PUBLIC_API_URL.`);
+    // A request that never reached the server carries status 0, so callers can
+    // tell "you are offline" apart from "the server said no".
+    throw new ApiError(connectionMessage(controller.signal.aborted), 0, { offline: true });
+  } finally {
+    clearTimeout(timeout);
   }
 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new ApiError(data.message || "Request failed", response.status, data);
+    throw new ApiError(data.message || messageForStatus(response.status), response.status, data);
   }
 
   return data as T;

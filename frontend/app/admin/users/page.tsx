@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getStoredUser, getToken } from "@/lib/auth";
+import { ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { User } from "@/lib/types";
 
 const formatRemovedAt = (value?: string | null) =>
@@ -38,6 +39,8 @@ export default function AdminUsersPage() {
   const [reasonError, setReasonError] = useState("");
   const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
   const token = useMemo(() => getToken(), []);
   const currentUser = useMemo(() => getStoredUser(), []);
   // Granting or revoking admin access is reserved for the platform owner.
@@ -57,9 +60,17 @@ export default function AdminUsersPage() {
     setRemoved(archive.users);
   }, [token]);
 
-  useEffect(() => {
-    refresh().catch((err) => setError(err instanceof Error ? err.message : "Failed to load users"));
+  const reload = useCallback(() => {
+    setLoading(true);
+    refresh()
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(err))
+      .finally(() => setLoading(false));
   }, [refresh]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const updateUser = async (id: string, payload: { role?: "STUDENT" | "ADMIN"; status?: "ACTIVE" | "SUSPENDED"; reason?: string }) => {
     if (!token) return;
@@ -149,6 +160,16 @@ export default function AdminUsersPage() {
       {error && <p className="text-sm text-red-300">{error}</p>}
       {notice && <p className="text-sm text-emerald-300">{notice}</p>}
 
+      {loadError ? (
+        <ErrorState
+          error={loadError}
+          fallback="We could not load the user list."
+          onRetry={reload}
+          retrying={loading}
+        />
+      ) : loading && users.length === 0 && removed.length === 0 ? (
+        <LoadingState label="Loading accounts..." />
+      ) : (
       <div className="glass-card overflow-x-auto">
         {view === "active" ? (
           <table className="w-full min-w-[640px] text-left text-sm">
@@ -284,6 +305,7 @@ export default function AdminUsersPage() {
           </table>
         )}
       </div>
+      )}
 
       {mounted && createPortal(
         <AnimatePresence>

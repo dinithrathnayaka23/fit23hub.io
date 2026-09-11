@@ -6,12 +6,13 @@ import { faArrowsRotate } from "@fortawesome/free-solid-svg-icons";
 import StatCard from "@/components/ui/StatCard";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { ErrorState } from "@/components/ui/StateCard";
 
 const REFRESH_INTERVAL_MS = 20_000;
 
 export default function AdminPage() {
   const [stats, setStats] = useState<Record<string, number>>({});
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -26,9 +27,9 @@ export default function AdminPage() {
       const result = await api.adminOverview(token);
       setStats(result.stats);
       setUpdatedAt(Date.now());
-      setError("");
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load admin overview");
+      setError(err);
     } finally {
       inFlight.current = false;
       setRefreshing(false);
@@ -87,7 +88,20 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-300">{error}</p>}
+      {Boolean(error) && updatedAt === null ? (
+        <ErrorState
+          error={error}
+          fallback="We could not load the console figures."
+          onRetry={load}
+          retrying={refreshing}
+        />
+      ) : (
+        <>
+          {Boolean(error) && (
+            <p className="rounded-lg border border-[rgba(250,204,21,0.4)] bg-[rgba(250,204,21,0.08)] px-3 py-2 text-xs text-amber-200">
+              These figures could not be refreshed, so they may be out of date.
+            </p>
+          )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="Students" value={String(stats.students ?? 0)} hint="Active student accounts" />
@@ -99,6 +113,8 @@ export default function AdminPage() {
         <StatCard label="Admins" value={String(stats.admins ?? 0)} hint="Moderator/admin accounts" />
         <StatCard label="Users" value={String(stats.users ?? 0)} hint="All registered users" />
       </div>
+        </>
+      )}
     </section>
   );
 }

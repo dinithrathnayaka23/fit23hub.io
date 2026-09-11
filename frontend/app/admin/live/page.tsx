@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { LiveSession } from "@/lib/types";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
@@ -20,6 +21,10 @@ export default function AdminLivePage() {
   const [recordingUrl, setRecordingUrl] = useState("");
   const [recordingDrafts, setRecordingDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
+  // Bumped by the retry button to re-run the load effect.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!token) return;
@@ -31,8 +36,10 @@ export default function AdminLivePage() {
           Object.fromEntries(result.sessions.map((item) => [item.id, item.recordingUrl || ""])),
         );
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load live sessions"));
-  }, [token]);
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(err))
+      .finally(() => setLoading(false));
+  }, [token, reloadKey]);
 
   const refreshSessions = async () => {
     if (!token) return;
@@ -108,7 +115,23 @@ export default function AdminLivePage() {
 
       {error && <p className="text-sm text-red-300">{error}</p>}
 
-      {sessions.map((session) => (
+      {loadError ? (
+        <ErrorState
+          error={loadError}
+          fallback="We could not load the live sessions."
+          onRetry={() => setReloadKey((key) => key + 1)}
+          retrying={loading}
+        />
+      ) : loading && sessions.length === 0 ? (
+        <LoadingState label="Loading live sessions..." />
+      ) : sessions.length === 0 ? (
+        <EmptyState
+          title="No live sessions"
+          hint="Create one above to schedule the next Kuppi stream."
+        />
+      ) : null}
+
+      {!loadError && sessions.map((session) => (
         <article key={session.id} className="glass-card p-4">
           <h3 className="text-lg font-semibold">{session.title}</h3>
           <p className="mt-1 text-sm text-[var(--muted)]">{session.module} | {session.academicYear} | Semester {session.semester}</p>
