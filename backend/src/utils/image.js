@@ -12,6 +12,36 @@ const MAX_ASPECT_RATIO = 4;
 // back from our own origin.
 const ALLOWED_FORMATS = new Set(["jpeg", "png", "webp", "heif", "gif"]);
 
+// ISO-BMFF "brand" codes that mark a file as HEIC/HEIF-with-HEVC, as opposed to
+// AVIF (also a "heif" container as far as libvips is concerned, but coded with
+// AV1 instead of HEVC). The distinction matters because sharp's official
+// prebuilt binaries link libheif against libaom for AV1 only - HEVC decoding is
+// left out over patent licensing, so a real iPhone photo fails to decode even
+// though libvips happily recognises the container.
+const HEIC_BRANDS = new Set(["heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1"]);
+const AVIF_BRANDS = new Set(["avif", "avis"]);
+
+/**
+ * Sniffs the ISO-BMFF `ftyp` box - the first bytes of any HEIC, HEIF or AVIF
+ * file - to tell an undecodable HEVC-coded HEIC apart from every other reason
+ * sharp might fail to read a file, without needing sharp to succeed first.
+ * Returns false for anything that is not a brand-recognisable HEIC container,
+ * including valid AVIF (which this build of sharp can actually decode).
+ */
+function looksLikeUndecodableHeic(buffer) {
+  if (buffer.length < 12 || buffer.toString("ascii", 4, 8) !== "ftyp") return false;
+
+  const boxSize = buffer.readUInt32BE(0);
+  const end = Math.min(buffer.length, boxSize > 0 ? boxSize : buffer.length);
+  const brands = [];
+  for (let offset = 8; offset + 4 <= end; offset += 4) {
+    brands.push(buffer.toString("ascii", offset, offset + 4).toLowerCase());
+  }
+
+  if (brands.some((brand) => AVIF_BRANDS.has(brand))) return false;
+  return brands.some((brand) => HEIC_BRANDS.has(brand));
+}
+
 export class ImageValidationError extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -37,6 +67,12 @@ export async function processAvatar(buffer) {
   try {
     metadata = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
   } catch {
+    if (looksLikeUndecodableHeic(buffer)) {
+      throw new ImageValidationError(
+        "iPhone HEIC photos aren't supported yet. In Settings, go to Camera > Formats and choose "
+          + '"Most Compatible" so new photos save as JPEG, or use "Convert to JPEG" when sharing this one.',
+      );
+    }
     throw new ImageValidationError("That file is not an image we can read. Upload a JPEG, PNG or WebP photo.");
   }
 
@@ -71,7 +107,12 @@ export async function processAvatar(buffer) {
       .webp({ quality: 82, effort: 4 })
       .toBuffer({ resolveWithObject: true });
   } catch {
-    // Most often an iPhone HEIC encoded with HEVC, which libvips cannot decode.
+    if (looksLikeUndecodableHeic(buffer)) {
+      throw new ImageValidationError(
+        "iPhone HEIC photos aren't supported yet. In Settings, go to Camera > Formats and choose "
+          + '"Most Compatible" so new photos save as JPEG, or use "Convert to JPEG" when sharing this one.',
+      );
+    }
     throw new ImageValidationError("We could not process that image. Save it as a JPEG or PNG and try again.");
   }
 
