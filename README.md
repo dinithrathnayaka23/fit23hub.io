@@ -502,6 +502,7 @@ flows requires `Authorization: Bearer <jwt>`.
 | **Privilege** | The super admin is immutable; only they can change roles or delete permanently |
 | **Validation** | `zod` schemas at every write boundary |
 | **Uploads** | Type and size checks before anything reaches disk or object storage |
+| **Profile photos** | Format sniffed from the decoded bytes, never the declared type; SVG refused; dimension, aspect and pixel-count limits; re-encoded to a 512px WebP so EXIF and GPS data are stripped |
 
 **Suspension is checked before the password.** A suspended student always sees *why* they cannot
 sign in, rather than a misleading "invalid credentials".
