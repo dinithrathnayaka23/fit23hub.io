@@ -14,6 +14,7 @@ import {
   faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
 import { api, downloadDataExport, resolveAssetUrl } from "@/lib/api";
+import { AVATAR_ACCEPT, prepareAvatar } from "@/lib/avatar";
 import { clearAuth, getToken, getStoredUser, setAuth } from "@/lib/auth";
 import PasswordField from "@/components/ui/PasswordField";
 import type { User } from "@/lib/types";
@@ -85,8 +86,9 @@ export default function AdminProfilePage() {
       .catch(() => setStaleProfile(true));
   }, [token]);
 
-  const onUploadImage = async (event: FormEvent) => {
+  const onUploadImage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = event.currentTarget;
     setImageError("");
 
     if (!token || !selectedFile) {
@@ -97,10 +99,13 @@ export default function AdminProfilePage() {
     setSavingImage(true);
 
     try {
-      const result = await api.uploadProfileImage(token, selectedFile);
+      const prepared = await prepareAvatar(selectedFile);
+      const result = await api.uploadProfileImage(token, prepared);
       setUser(result.user);
       setAuth(token, result.user);
       setSelectedFile(null);
+      // Clears the stale filename so the input matches the now-empty selection.
+      form.reset();
     } catch (err) {
       setImageError(err instanceof Error ? err.message : "Failed to upload profile image");
     } finally {
@@ -227,7 +232,7 @@ export default function AdminProfilePage() {
         <form onSubmit={onUploadImage} className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
           <input
             type="file"
-            accept="image/*"
+            accept={AVATAR_ACCEPT}
             onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
             className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm"
           />
@@ -240,6 +245,10 @@ export default function AdminProfilePage() {
             {savingImage ? "Saving..." : "Save Profile Image"}
           </button>
         </form>
+        <p className="mt-2 text-xs text-[var(--muted)]">
+          JPEG, PNG or WebP, at least 128×128 px. Photos are cropped to a square, resized, and stripped of
+          location and camera data before they are saved.
+        </p>
         {imageError && <p className="mt-2 text-sm text-red-300">{imageError}</p>}
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
