@@ -4,6 +4,7 @@ import fs from "fs";
 import multer from "multer";
 import { uploadsDir } from "./paths.js";
 import { shouldUseRemoteStorage } from "./storage.js";
+import { AVATAR_MAX_BYTES } from "./image.js";
 
 const localUploadDir = shouldUseRemoteStorage()
   ? path.join(os.tmpdir(), "fit23hub-uploads")
@@ -35,5 +36,16 @@ export const uploadRecording = multer({
   limits: {
     // Allow long lecture recordings (up to 3GB).
     fileSize: 3 * 1024 * 1024 * 1024,
+  },
+});
+
+// Avatars stay in memory: they are decoded and re-encoded before anything is
+// written, so the original (with its EXIF and GPS data) never touches disk.
+export const uploadAvatar = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: AVATAR_MAX_BYTES,
+    files: 1,
+    fields: 5,
   },
 });
