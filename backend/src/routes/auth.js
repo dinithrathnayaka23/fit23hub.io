@@ -5,8 +5,9 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { signToken } from "../utils/jwt.js";
 import { invalidateAuthUserCache, requireAuth } from "../middleware/auth.js";
-import { upload } from "../utils/upload.js";
-import { storeUploadedFile } from "../utils/storage.js";
+import { uploadAvatar } from "../utils/upload.js";
+import { deleteStoredFile, storeBuffer } from "../utils/storage.js";
+import { AVATAR_MAX_BYTES, ImageValidationError, processAvatar } from "../utils/image.js";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../utils/mailer.js";
 import { dispatch, notifyAdmins, notifyUser } from "../utils/notifications.js";
 
@@ -644,6 +645,8 @@ router.delete("/account", requireAuth, async (req, res) => {
     ]);
 
     invalidateAuthUserCache(userId);
+    // A profile photo is personal data, so it goes with the account.
+    await deleteStoredFile(user.profileImageUrl);
 
     dispatch(() => notifyAdmins({
       type: "ACCOUNT_DELETED",
@@ -666,37 +669,73 @@ router.delete("/account", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/profile-image", requireAuth, upload.single("image"), async (req, res) => {
+/** Runs multer and turns its errors into messages a student can act on. */
+function receiveAvatar(req, res, next) {
+  uploadAvatar.single("image")(req, res, (error) => {
+    if (!error) return next();
+
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        message: `That photo is larger than ${AVATAR_MAX_BYTES / (1024 * 1024)} MB. Choose a smaller one.`,
+      });
+    }
+
+    return res.status(400).json({ message: "Upload a single image in the \"image\" field." });
+  });
+}
+
+router.post("/profile-image", requireAuth, receiveAvatar, async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ message: "Image file is required" });
+    return res.status(400).json({ message: "Choose an image to upload." });
   }
 
-  if (!req.file.mimetype.startsWith("image/")) {
-    return res.status(400).json({ message: "Only image files are allowed" });
+  try {
+    const avatar = await processAvatar(req.file.buffer);
+
+    const previous = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { profileImageUrl: true },
+    });
+
+    const imageUrl = await storeBuffer({
+      buffer: avatar.buffer,
+      folder: "profile-images",
+      extension: avatar.extension,
+      contentType: avatar.contentType,
+    });
+
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { profileImageUrl: imageUrl },
+      select: {
+        id: true,
+        fullName: true,
+        indexNo: true,
+        email: true,
+        profileImageUrl: true,
+        role: true,
+        status: true,
+      },
+    });
+
+    invalidateAuthUserCache(req.user.id);
+
+    // Only after the new URL is saved, so a failed update never leaves the
+    // account pointing at a file that has already been removed.
+    if (previous?.profileImageUrl && previous.profileImageUrl !== imageUrl) {
+      await deleteStoredFile(previous.profileImageUrl);
+    }
+
+    return res.json({ user });
+  } catch (error) {
+    if (error instanceof ImageValidationError) {
+      return res.status(error.status).json({ message: error.message });
+    }
+
+    // eslint-disable-next-line no-console
+    console.error("[profile-image] upload failed:", error);
+    return res.status(500).json({ message: "Failed to update the profile image" });
   }
-
-  const imageUrl = await storeUploadedFile({
-    file: req.file,
-    folder: "profile-images",
-  });
-
-  const user = await prisma.user.update({
-    where: { id: req.user.id },
-    data: { profileImageUrl: imageUrl },
-    select: {
-      id: true,
-      fullName: true,
-      indexNo: true,
-      email: true,
-      profileImageUrl: true,
-      role: true,
-      status: true,
-    },
-  });
-
-  invalidateAuthUserCache(req.user.id);
-
-  return res.json({ user });
 });
 
 export default router;
