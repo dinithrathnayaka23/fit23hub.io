@@ -308,7 +308,7 @@ router.post("/logout-all", requireAuth, async (req, res) => {
     data: { tokenVersion: { increment: 1 } },
   });
 
-  invalidateAuthUserCache(req.user.id);
+  await invalidateAuthUserCache(req.user.id);
   clearSessionCookies(res);
   return res.json({ message: "Signed out of all devices" });
 });
@@ -344,7 +344,7 @@ router.post("/change-password", requireAuth, async (req, res) => {
       data: { passwordHash, tokenVersion: { increment: 1 } },
     });
 
-    invalidateAuthUserCache(user.id);
+    await invalidateAuthUserCache(user.id);
     setSessionCookies(res, signToken({ ...req.user, tokenVersion: updated.tokenVersion }));
 
     dispatch(() => notifyUser(user.id, {
@@ -462,7 +462,7 @@ router.post("/reset-password", async (req, res) => {
       prisma.passwordResetToken.deleteMany({ where: { userId: record.userId, usedAt: null } }),
     ]);
 
-    invalidateAuthUserCache(record.userId);
+    await invalidateAuthUserCache(record.userId);
 
     dispatch(() => notifyUser(record.userId, {
       type: "PASSWORD_CHANGED",
@@ -519,7 +519,7 @@ router.post("/verify-email", async (req, res) => {
       prisma.emailVerificationToken.deleteMany({ where: { userId: record.userId, usedAt: null } }),
     ]);
 
-    invalidateAuthUserCache(record.userId);
+    await invalidateAuthUserCache(record.userId);
 
     if (!record.user.emailVerifiedAt) {
       dispatch(() => notifyUser(record.userId, {
@@ -678,7 +678,7 @@ router.delete("/account", requireAuth, async (req, res) => {
       prisma.user.delete({ where: { id: userId } }),
     ]);
 
-    invalidateAuthUserCache(userId);
+    await invalidateAuthUserCache(userId);
     clearSessionCookies(res);
     // A profile photo is personal data, so it goes with the account.
     await deleteStoredFile(user.profileImageUrl);
@@ -753,7 +753,7 @@ router.post("/profile-image", requireAuth, receiveAvatar, async (req, res) => {
       },
     });
 
-    invalidateAuthUserCache(req.user.id);
+    await invalidateAuthUserCache(req.user.id);
 
     // Only after the new URL is saved, so a failed update never leaves the
     // account pointing at a file that has already been removed.

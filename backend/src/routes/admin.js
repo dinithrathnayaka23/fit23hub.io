@@ -176,7 +176,7 @@ router.patch("/users/:id", async (req, res) => {
       select: userSelect,
     });
 
-    invalidateAuthUserCache(user.id);
+    await invalidateAuthUserCache(user.id);
 
     const actorName = req.user.fullName;
 
@@ -268,7 +268,7 @@ router.delete("/users/:id", async (req, res) => {
 
   // The account is blocked from here on, so drop the cached auth row that
   // would otherwise keep an open session alive for up to 15 seconds.
-  invalidateAuthUserCache(user.id);
+  await invalidateAuthUserCache(user.id);
 
   return res.json({ user, message: "Account removed. It can be restored from the archive." });
 });
