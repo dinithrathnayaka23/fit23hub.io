@@ -1,6 +1,6 @@
 import { prisma } from "../prisma.js";
 import { verifyToken } from "../utils/jwt.js";
-import { SESSION_COOKIE } from "../config/cookies.js";
+import { SESSION_COOKIE, clearSessionCookies } from "../config/cookies.js";
 
 const authUserCache = new Map();
 const AUTH_USER_CACHE_TTL_MS = 15_000;
@@ -54,12 +54,22 @@ export async function requireAuth(req, res, next) {
         emailVerifiedAt: true,
         isSystemAccount: true,
         deletedAt: true,
+        tokenVersion: true,
         createdAt: true,
       },
     });
 
     if (!user || user.status !== "ACTIVE" || user.isSystemAccount || user.deletedAt) {
       return res.status(401).json({ message: "User is not active" });
+    }
+
+    // The token was valid when issued but a revoking event has since bumped
+    // the counter - a password change, a suspension, or "sign out everywhere".
+    // Clearing the cookie here stops the browser from resending a dead token
+    // on every subsequent request.
+    if (decoded.tv !== user.tokenVersion) {
+      clearSessionCookies(res);
+      return res.status(401).json({ message: "Your session is no longer valid. Please sign in again." });
     }
 
     if (!user.emailVerifiedAt) {
