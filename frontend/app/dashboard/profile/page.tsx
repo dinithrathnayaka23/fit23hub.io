@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -10,6 +10,7 @@ import { api, downloadDataExport, resolveAssetUrl } from "@/lib/api";
 import { AVATAR_ACCEPT, prepareAvatar } from "@/lib/avatar";
 import { clearAuth, getToken, getStoredUser, setAuth } from "@/lib/auth";
 import PasswordField from "@/components/ui/PasswordField";
+import AvatarCropper from "@/components/ui/AvatarCropper";
 import type { User } from "@/lib/types";
 
 const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,72}$/;
@@ -17,6 +18,10 @@ const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(getStoredUser());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // The untouched pick, kept so the crop can be reopened and redone.
+  const [cropSource, setCropSource] = useState<File | null>(null);
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [staleProfile, setStaleProfile] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,6 +63,41 @@ export default function ProfilePage() {
       .catch(() => setStaleProfile(true));
   }, [token]);
 
+  // Object URLs are revoked as soon as they are replaced, so choosing
+  // several photos in a row cannot leak them.
+  const showPreview = useCallback((blob: File | null) => {
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return blob ? URL.createObjectURL(blob) : null;
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const onPickFile = (picked: File | null) => {
+    setError("");
+    setOriginalFile(picked);
+    setSelectedFile(null);
+    showPreview(null);
+    setCropSource(picked);
+  };
+
+  const onCropConfirmed = (cropped: File) => {
+    setCropSource(null);
+    setSelectedFile(cropped);
+    showPreview(cropped);
+  };
+
+  // Undecodable or too small to crop: send the original and let the server
+  // explain precisely what is wrong with it.
+  const onCropUnavailable = useCallback((original: File) => {
+    setCropSource(null);
+    setSelectedFile(original);
+    showPreview(null);
+  }, [showPreview]);
+
   const onUploadImage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -76,6 +116,8 @@ export default function ProfilePage() {
       setUser(result.user);
       setAuth(token, result.user);
       setSelectedFile(null);
+      setOriginalFile(null);
+      showPreview(null);
       // Clears the stale filename so the input matches the now-empty selection.
       form.reset();
     } catch (err) {
@@ -165,6 +207,14 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-4">
+      {cropSource && (
+        <AvatarCropper
+          file={cropSource}
+          onCancel={() => setCropSource(null)}
+          onConfirm={onCropConfirmed}
+          onFallback={onCropUnavailable}
+        />
+      )}
       {staleProfile && (
         <p className="rounded-lg border border-[rgba(250,204,21,0.4)] bg-[rgba(250,204,21,0.08)] px-3 py-2 text-xs text-amber-200">
           We could not refresh your profile just now, so these details come from your last sign-in.
@@ -191,12 +241,31 @@ export default function ProfilePage() {
         </div>
 
         <form onSubmit={onUploadImage} className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
-          <input
-            type="file"
-            accept={AVATAR_ACCEPT}
-            onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-            className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm"
-          />
+          <div className="flex min-w-0 items-center gap-3">
+            {previewUrl && (
+              <div className="shrink-0 text-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt="Cropped preview"
+                  className="h-14 w-14 rounded-full border border-[rgba(56,189,248,0.5)] object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => originalFile && setCropSource(originalFile)}
+                  className="mt-1 block w-full text-[10px] text-[var(--accent)] hover:underline"
+                >
+                  Adjust
+                </button>
+              </div>
+            )}
+            <input
+              type="file"
+              accept={AVATAR_ACCEPT}
+              onChange={(e) => onPickFile(e.target.files?.[0] || null)}
+              className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm"
+            />
+          </div>
           <button
             type="submit"
             disabled={saving}
@@ -207,8 +276,8 @@ export default function ProfilePage() {
           </button>
         </form>
         <p className="mt-2 text-xs text-[var(--muted)]">
-          JPEG, PNG or WebP, at least 128×128 px. Photos are cropped to a square, resized, and stripped of
-          location and camera data before they are saved.
+          JPEG, PNG or WebP, at least 128×128 px. Position the photo in the circle, then save. Location
+          and camera data are stripped before it is stored.
         </p>
         {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
 
