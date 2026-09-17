@@ -10,7 +10,6 @@ import {
   faChartSimple,
   faCircleNodes,
   faHouse,
-  faKeyboard,
   faRobot,
   faPowerOff,
   faBell,
@@ -23,9 +22,7 @@ import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { api } from "@/lib/api";
 import { clearStoredUser, getStoredUser } from "@/lib/auth";
 import { useOnlineStatus } from "@/lib/use-online";
-import { useSectionShortcuts } from "@/lib/use-section-shortcuts";
 import TopBar from "@/components/ui/TopBar";
-import KeyboardShortcutsHelp from "@/components/ui/KeyboardShortcutsHelp";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -38,37 +35,34 @@ type ShellLink = {
   href: string;
   label: string;
   icon: IconDefinition;
-  /** The letter that follows "g" to jump here - see useSectionShortcuts. */
-  key: string;
 };
 
 const dashboardLinks: ShellLink[] = [
-  { href: "/dashboard", label: "Overview", icon: faHouse, key: "d" },
-  { href: "/dashboard/announcements", label: "Announcements", icon: faBullhorn, key: "a" },
-  { href: "/dashboard/materials", label: "Materials", icon: faBookOpen, key: "m" },
-  { href: "/dashboard/recordings", label: "Recordings", icon: faVideo, key: "r" },
-  { href: "/dashboard/live", label: "Kuppi Live", icon: faCircleNodes, key: "l" },
-  { href: "/dashboard/ai", label: "AI Learning", icon: faRobot, key: "i" },
-  { href: "/dashboard/notifications", label: "Notifications", icon: faBell, key: "n" },
-  { href: "/dashboard/profile", label: "Profile", icon: faUserCircle, key: "p" },
+  { href: "/dashboard", label: "Overview", icon: faHouse },
+  { href: "/dashboard/announcements", label: "Announcements", icon: faBullhorn },
+  { href: "/dashboard/materials", label: "Materials", icon: faBookOpen },
+  { href: "/dashboard/recordings", label: "Recordings", icon: faVideo },
+  { href: "/dashboard/live", label: "Kuppi Live", icon: faCircleNodes },
+  { href: "/dashboard/ai", label: "AI Learning", icon: faRobot },
+  { href: "/dashboard/notifications", label: "Notifications", icon: faBell },
+  { href: "/dashboard/profile", label: "Profile", icon: faUserCircle },
 ];
 
 const adminLinks: ShellLink[] = [
-  { href: "/admin", label: "Overview", icon: faChartSimple, key: "d" },
-  { href: "/admin/announcements", label: "Announcements", icon: faBullhorn, key: "a" },
-  { href: "/admin/users", label: "Users", icon: faUsers, key: "u" },
-  { href: "/admin/materials", label: "Materials", icon: faBookOpen, key: "m" },
-  { href: "/admin/recordings", label: "Recordings", icon: faVideo, key: "r" },
-  { href: "/admin/live", label: "Kuppi Live", icon: faCircleNodes, key: "l" },
-  { href: "/admin/notifications", label: "Notifications", icon: faBell, key: "n" },
-  { href: "/admin/profile", label: "Profile", icon: faUserCircle, key: "p" },
+  { href: "/admin", label: "Overview", icon: faChartSimple },
+  { href: "/admin/announcements", label: "Announcements", icon: faBullhorn },
+  { href: "/admin/users", label: "Users", icon: faUsers },
+  { href: "/admin/materials", label: "Materials", icon: faBookOpen },
+  { href: "/admin/recordings", label: "Recordings", icon: faVideo },
+  { href: "/admin/live", label: "Kuppi Live", icon: faCircleNodes },
+  { href: "/admin/notifications", label: "Notifications", icon: faBell },
+  { href: "/admin/profile", label: "Profile", icon: faUserCircle },
 ];
 
 export default function AppShell({ children, title, subtitle, admin = false }: AppShellProps) {
   const pathname = usePathname();
   const links = admin ? adminLinks : dashboardLinks;
   const online = useOnlineStatus();
-  const { helpOpen, closeHelp, toggleHelp } = useSectionShortcuts(links);
   const [user, setUser] = useState<ReturnType<typeof getStoredUser>>(null);
 
   useEffect(() => {
@@ -114,16 +108,7 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
               );
             })}
           </nav>
-          <div className="mt-4 shrink-0 space-y-2 border-t border-[var(--border)] pt-4">
-            <button
-              type="button"
-              onClick={toggleHelp}
-              className="flex w-full items-center gap-2.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition hover:border-[rgba(56,189,248,0.35)] hover:text-white"
-            >
-              <FontAwesomeIcon icon={faKeyboard} className="h-4 w-4" />
-              Keyboard shortcuts
-              <kbd className="ml-auto rounded border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-1.5 py-0.5 text-[10px]">?</kbd>
-            </button>
+          <div className="mt-4 shrink-0 border-t border-[var(--border)] pt-4">
             <button
               type="button"
               onClick={async () => {
@@ -170,8 +155,6 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
           </main>
         </div>
       </div>
-
-      <KeyboardShortcutsHelp open={helpOpen} onClose={closeHelp} links={links} />
     </div>
   );
 }
