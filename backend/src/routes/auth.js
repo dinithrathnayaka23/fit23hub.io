@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { signToken } from "../utils/jwt.js";
+import { clearSessionCookies, setSessionCookies } from "../config/cookies.js";
 import { invalidateAuthUserCache, requireAuth } from "../middleware/auth.js";
 import { uploadAvatar } from "../utils/upload.js";
 import { deleteStoredFile, storeBuffer } from "../utils/storage.js";
@@ -275,8 +276,10 @@ router.post("/login", async (req, res) => {
       status: user.status,
     };
 
-    const token = signToken(safeUser);
-    return res.json({ user: safeUser, token });
+    // The token is never returned in the body - it goes straight into an
+    // httpOnly cookie that page scripts cannot read.
+    setSessionCookies(res, signToken(safeUser));
+    return res.json({ user: safeUser });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: "Invalid input", errors: error.issues });
@@ -284,6 +287,11 @@ router.post("/login", async (req, res) => {
 
     return res.status(500).json({ message: "Failed to login" });
   }
+});
+
+router.post("/logout", (req, res) => {
+  clearSessionCookies(res);
+  return res.json({ message: "Signed out" });
 });
 
 router.get("/me", requireAuth, async (req, res) => {
@@ -645,6 +653,7 @@ router.delete("/account", requireAuth, async (req, res) => {
     ]);
 
     invalidateAuthUserCache(userId);
+    clearSessionCookies(res);
     // A profile photo is personal data, so it goes with the account.
     await deleteStoredFile(user.profileImageUrl);
 

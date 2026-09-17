@@ -1,5 +1,6 @@
 import { prisma } from "../prisma.js";
 import { verifyToken } from "../utils/jwt.js";
+import { SESSION_COOKIE } from "../config/cookies.js";
 
 const authUserCache = new Map();
 const AUTH_USER_CACHE_TTL_MS = 15_000;
@@ -28,8 +29,10 @@ export function invalidateAuthUserCache(userId) {
 
 export async function requireAuth(req, res, next) {
   try {
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    // The session lives only in an httpOnly cookie. There is deliberately no
+    // Authorization header fallback: accepting one would re-open the path a
+    // script-readable token gave an attacker.
+    const token = req.cookies?.[SESSION_COOKIE];
 
     if (!token) {
       return res.status(401).json({ message: "Authentication required" });

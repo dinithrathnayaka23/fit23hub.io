@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import hpp from "hpp";
 import compression from "compression";
+import cookieParser from "cookie-parser";
 import fs from "fs";
 
 import authRoutes from "./routes/auth.js";
@@ -18,6 +19,7 @@ import announcementRoutes from "./routes/announcements.js";
 import { ensureDefaultAdmin, ensureSuperAdmin } from "./seed.js";
 import { prisma } from "./prisma.js";
 import { aiRateLimiter, apiRateLimiter, authRateLimiter, buildCorsOptions, securityConfig } from "./config/security.js";
+import { csrfGuard } from "./middleware/csrf.js";
 import { uploadsDir } from "./utils/paths.js";
 
 const app = express();
@@ -49,6 +51,9 @@ app.use(compression({
 }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+// Runs before every route, so no state-changing endpoint can forget it.
+app.use(csrfGuard);
 
 app.use("/uploads", express.static(uploadsDir, {
   maxAge: "7d",
