@@ -63,6 +63,11 @@ model User {
   suspensionReason String?
   emailVerifiedAt DateTime?
   isSystemAccount Boolean          @default(false)
+  /// Bumped on password change/reset, admin suspension, and "sign out
+  /// everywhere". A token whose embedded version no longer matches this one is
+  /// rejected even though its signature and expiry are still valid - the
+  /// server-side half of revoking a JWT, which is otherwise stateless.
+  tokenVersion Int               @default(0)
   deletedAt    DateTime?
   deletedById  String?
   createdAt    DateTime          @default(now())
