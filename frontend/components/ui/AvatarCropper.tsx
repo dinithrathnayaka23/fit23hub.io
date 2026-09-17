@@ -10,6 +10,9 @@ import { faCheck, faMagnifyingGlassMinus, faMagnifyingGlassPlus } from "@fortawe
 const OUTPUT_SIZE = 512;
 const MIN_SOURCE_SIDE = 128;
 const MAX_ZOOM = 4;
+const PAN_STEP = 14;
+const PAN_STEP_FAST = 48;
+const ZOOM_STEP = 0.1;
 
 type AvatarCropperProps = {
   file: File;
@@ -68,6 +71,9 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
   }, [file, onFallback]);
 
   // The frame is responsive, so its size is measured rather than assumed.
+  // Focusing it here (once the photo is actually ready to move) puts keyboard
+  // control one Tab away from nowhere: it works the instant the dialog opens,
+  // with no hunting through the zoom buttons first.
   useEffect(() => {
     const node = frameRef.current;
     if (!node) return;
@@ -75,6 +81,7 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
     const observer = new ResizeObserver(([entry]) => setViewport(entry.contentRect.width));
     observer.observe(node);
     setViewport(node.getBoundingClientRect().width);
+    node.focus({ preventScroll: true });
     return () => observer.disconnect();
   }, [bitmap]);
 
@@ -179,6 +186,51 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
     applyZoom(zoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12));
   };
 
+  /**
+   * Full keyboard operation of the frame itself: arrows pan (Shift for a
+   * bigger step), +/- zoom, Home recentres, Enter confirms. The frame is a
+   * plain focusable div rather than a range input because panning is
+   * two-dimensional - a single input has no natural mapping for that.
+   */
+  const onFrameKeyDown = (event: React.KeyboardEvent) => {
+    const step = event.shiftKey ? PAN_STEP_FAST : PAN_STEP;
+    const pan = (dx: number, dy: number) => {
+      event.preventDefault();
+      setOffset((current) => {
+        const from = current ?? centred;
+        return clamp(from.x + dx, from.y + dy, scale);
+      });
+    };
+
+    switch (event.key) {
+      case "ArrowLeft":
+        return pan(step, 0);
+      case "ArrowRight":
+        return pan(-step, 0);
+      case "ArrowUp":
+        return pan(0, step);
+      case "ArrowDown":
+        return pan(0, -step);
+      case "+":
+      case "=":
+        event.preventDefault();
+        return applyZoom(zoom + ZOOM_STEP);
+      case "-":
+      case "_":
+        event.preventDefault();
+        return applyZoom(zoom - ZOOM_STEP);
+      case "Home":
+        event.preventDefault();
+        setZoom(1);
+        return setOffset(null);
+      case "Enter":
+        event.preventDefault();
+        return confirm();
+      default:
+        return undefined;
+    }
+  };
+
   const confirm = () => {
     if (!bitmap || !viewport) return;
     setBusy(true);
@@ -251,16 +303,22 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
             Drag to move, pinch or use the slider to zoom. Everything inside the circle is kept.
+            The frame also takes the keyboard: arrow keys move the photo, + and - zoom, Home
+            recentres, and Enter confirms.
           </p>
 
           <div
             ref={frameRef}
+            tabIndex={0}
+            role="application"
+            aria-label="Photo crop frame. Use arrow keys to move the photo, plus and minus to zoom, Home to recentre, and Enter to confirm."
+            onKeyDown={onFrameKeyDown}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={endPointer}
             onPointerCancel={endPointer}
             onWheel={onWheel}
-            className="relative mx-auto mt-4 aspect-square w-full max-w-[20rem] touch-none select-none overflow-hidden rounded-xl bg-[rgba(3,8,17,0.7)]"
+            className="relative mx-auto mt-4 aspect-square w-full max-w-[20rem] touch-none select-none overflow-hidden rounded-xl bg-[rgba(3,8,17,0.7)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(56,189,248,0.7)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--card)]"
           >
             <canvas
               ref={canvasRef}
