@@ -151,6 +151,11 @@ export const api = {
     return request<{ message: string }>("/auth/logout", { method: "POST" });
   },
 
+  /** Revokes every token issued for this account, including the current one. */
+  async logoutAll() {
+    return request<{ message: string }>("/auth/logout-all", { method: "POST" });
+  },
+
   async login(input: { email: string; password: string }) {
     return request<{ user: User }>("/auth/login", {
       method: "POST",

@@ -8,6 +8,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faDownload,
   faKey,
+  faRightFromBracket,
   faShieldHalved,
   faTriangleExclamation,
   faUpload,
@@ -60,6 +61,9 @@ export default function AdminProfilePage() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+
+  const [signingOutAll, setSigningOutAll] = useState(false);
+  const [signOutAllError, setSignOutAllError] = useState("");
 
   const [exporting, setExporting] = useState(false);
   const [privacyError, setPrivacyError] = useState("");
@@ -192,6 +196,22 @@ export default function AdminProfilePage() {
       setPasswordError(err instanceof Error ? err.message : "Failed to change password");
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  // Also ends this device's own session, deliberately: "everywhere" means
+  // everywhere, so the caller signs back in fresh rather than one tab quietly
+  // staying logged in with a stale sense of what "signed out" meant.
+  const onSignOutAllDevices = async () => {
+    setSignOutAllError("");
+    setSigningOutAll(true);
+    try {
+      await api.logoutAll();
+      clearStoredUser();
+      window.location.href = "/login";
+    } catch (err) {
+      setSignOutAllError(err instanceof Error ? err.message : "Failed to sign out of other devices");
+      setSigningOutAll(false);
     }
   };
 
@@ -386,6 +406,24 @@ export default function AdminProfilePage() {
             </button>
           </div>
         </form>
+
+        <div className="mt-6 border-t border-[var(--border)] pt-5">
+          <h3 className="text-sm font-semibold">Sign out everywhere</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Ends every session for this account, including this one - useful if you signed in on a
+            shared or borrowed device and forgot to sign out. You will need to sign in again here too.
+          </p>
+          {signOutAllError && <p className="mt-2 text-sm text-red-300">{signOutAllError}</p>}
+          <button
+            type="button"
+            onClick={onSignOutAllDevices}
+            disabled={signingOutAll}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted)] transition hover:border-red-400/40 hover:text-red-200 disabled:opacity-70"
+          >
+            <FontAwesomeIcon icon={faRightFromBracket} className="h-4 w-4" />
+            {signingOutAll ? "Signing out..." : "Sign out of all devices"}
+          </button>
+        </div>
       </section>
 
       <section className="glass-card p-6">
