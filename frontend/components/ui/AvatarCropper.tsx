@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -83,9 +83,12 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
   const scale = baseScale * zoom;
 
   // Where the image sits when it has not been dragged yet.
-  const centred = bitmap && viewport
-    ? { x: (viewport - bitmap.width * scale) / 2, y: (viewport - bitmap.height * scale) / 2 }
-    : { x: 0, y: 0 };
+  const centred = useMemo(
+    () => (bitmap && viewport
+      ? { x: (viewport - bitmap.width * scale) / 2, y: (viewport - bitmap.height * scale) / 2 }
+      : { x: 0, y: 0 }),
+    [bitmap, viewport, scale],
+  );
   const position = offset ?? centred;
 
   const clamp = useCallback(

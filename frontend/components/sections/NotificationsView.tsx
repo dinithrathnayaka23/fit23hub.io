@@ -15,7 +15,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/ui/StateCard";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { TONE_CHIP, formatRelativeTime, notificationMeta } from "@/lib/notification-meta";
 import type { AppNotification } from "@/lib/types";
 
@@ -36,15 +36,15 @@ export default function NotificationsView() {
   const [now, setNow] = useState(() => Date.now());
   const [clearing, setClearing] = useState(false);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
   const inFlight = useRef(false);
 
   const load = useCallback(async (nextPage: number, nextFilter: Filter) => {
-    if (!token || inFlight.current) return;
+    if (!signedIn || inFlight.current) return;
     inFlight.current = true;
     setLoading(true);
     try {
-      const result = await api.getNotifications(token, {
+      const result = await api.getNotifications({
         page: nextPage,
         pageSize: PAGE_SIZE,
         filter: nextFilter,
@@ -60,7 +60,7 @@ export default function NotificationsView() {
       inFlight.current = false;
       setLoading(false);
     }
-  }, [token]);
+  }, [signedIn]);
 
   useEffect(() => {
     load(page, filter);
@@ -78,21 +78,21 @@ export default function NotificationsView() {
   };
 
   const openNotification = (item: AppNotification) => {
-    if (!item.readAt && token) {
+    if (!item.readAt && signedIn) {
       setItems((prev) => prev.map((n) => (n.id === item.id ? { ...n, readAt: new Date().toISOString() } : n)));
       setUnread((prev) => Math.max(0, prev - 1));
-      api.markNotificationRead(token, item.id).catch(() => load(page, filter));
+      api.markNotificationRead(item.id).catch(() => load(page, filter));
     }
     if (item.link) router.push(item.link);
   };
 
   const markAllRead = async () => {
-    if (!token || unread === 0) return;
+    if (!signedIn || unread === 0) return;
     const stamp = new Date().toISOString();
     setItems((prev) => prev.map((n) => (n.readAt ? n : { ...n, readAt: stamp })));
     setUnread(0);
     try {
-      await api.markAllNotificationsRead(token);
+      await api.markAllNotificationsRead();
       if (filter === "unread") load(1, "unread");
     } catch {
       load(page, filter);
@@ -100,10 +100,10 @@ export default function NotificationsView() {
   };
 
   const removeOne = async (id: string) => {
-    if (!token) return;
+    if (!signedIn) return;
     setItems((prev) => prev.filter((n) => n.id !== id));
     try {
-      const result = await api.deleteNotification(token, id);
+      const result = await api.deleteNotification(id);
       setUnread(result.unread);
       setTotal((prev) => Math.max(0, prev - 1));
     } catch {
@@ -112,10 +112,10 @@ export default function NotificationsView() {
   };
 
   const clearAll = async () => {
-    if (!token || total === 0) return;
+    if (!signedIn || total === 0) return;
     setClearing(true);
     try {
-      await api.clearNotifications(token);
+      await api.clearNotifications();
       setItems([]);
       setUnread(0);
       setTotal(0);

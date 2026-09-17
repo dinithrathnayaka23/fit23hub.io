@@ -7,7 +7,7 @@ import FadeIn from "@/components/animations/FadeIn";
 import AnnouncementCard from "@/components/cards/AnnouncementCard";
 import { ANNOUNCEMENT_CATEGORIES, CATEGORY_ORDER } from "@/lib/announcement-meta";
 import { api } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import type { Announcement, AnnouncementCategory } from "@/lib/types";
 
 type Filter = "all" | "pending" | "upcoming";
@@ -28,7 +28,7 @@ export default function StudentAnnouncementsPage() {
   const [ackingId, setAckingId] = useState("");
   const [nowMs, setNowMs] = useState<number | null>(null);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
 
   useEffect(() => {
     setNowMs(Date.now());
@@ -37,10 +37,10 @@ export default function StudentAnnouncementsPage() {
   }, []);
 
   const load = useCallback(async () => {
-    if (!token) return;
+    if (!signedIn) return;
     setLoading(true);
     try {
-      const result = await api.getAnnouncements(token, {
+      const result = await api.getAnnouncements({
         ...(filter === "all" ? {} : { filter }),
         ...(category ? { category } : {}),
         pageSize: 50,
@@ -53,17 +53,17 @@ export default function StudentAnnouncementsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, filter, category]);
+  }, [signedIn, filter, category]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const onAcknowledge = async (item: Announcement) => {
-    if (!token) return;
+    if (!signedIn) return;
     setAckingId(item.id);
     try {
-      const result = await api.acknowledgeAnnouncement(token, item.id);
+      const result = await api.acknowledgeAnnouncement(item.id);
       // Kept in place rather than filtered out, so the list does not jump
       // under the student the moment they confirm.
       setAnnouncements((current) =>

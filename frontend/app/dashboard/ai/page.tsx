@@ -12,7 +12,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { api, askAiInChatStream } from "@/lib/api";
 import { QuizCard, FlashcardsCard } from "@/components/ai/StudyArtifacts";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
 const levelFromSemester = (semester: number) => `Level ${Math.ceil(semester / 2)}`;
@@ -218,7 +218,7 @@ function AssistantContent({ content }: { content: string }) {
 }
 
 export default function AiPage() {
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
 
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [activeProjectId, setActiveProjectId] = useState("");
@@ -245,32 +245,32 @@ export default function AiPage() {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
 
   const loadProjects = useCallback(async () => {
-    if (!token) return "";
-    const result = await api.getAiProjects(token);
+    if (!signedIn) return "";
+    const result = await api.getAiProjects();
 
     if (!result.projects.length) {
-      const created = await api.createAiProject(token, { name: "General Project" });
+      const created = await api.createAiProject({ name: "General Project" });
       setProjects([created.project]);
       return created.project.id;
     }
 
     setProjects(result.projects);
     return result.projects[0].id;
-  }, [token]);
+  }, [signedIn]);
 
   const loadSources = useCallback(async (projectId: string) => {
-    if (!token || !projectId) return;
-    const result = await api.getAiSourcesByProject(token, projectId);
+    if (!signedIn || !projectId) return;
+    const result = await api.getAiSourcesByProject(projectId);
     setSources(result.sources);
-  }, [token]);
+  }, [signedIn]);
 
   const loadChats = useCallback(async (projectId: string) => {
-    if (!token || !projectId) return "";
-    const result = await api.getAiChatsByProject(token, projectId);
+    if (!signedIn || !projectId) return "";
+    const result = await api.getAiChatsByProject(projectId);
     setChats(result.chats);
 
     if (!result.chats.length) {
-      const created = await api.createAiChat(token, "General AI Chat", projectId);
+      const created = await api.createAiChat("General AI Chat", projectId);
       setChats([created.chat]);
       setActiveChatId(created.chat.id);
       return created.chat.id;
@@ -283,16 +283,16 @@ export default function AiPage() {
     }
 
     return activeChatId;
-  }, [token, activeChatId]);
+  }, [signedIn, activeChatId]);
 
   const loadMessages = useCallback(async (chatId: string) => {
-    if (!token || !chatId) return;
-    const result = await api.getAiMessages(token, chatId);
+    if (!signedIn || !chatId) return;
+    const result = await api.getAiMessages(chatId);
     setMessages(result.messages as AiMessage[]);
-  }, [token]);
+  }, [signedIn]);
 
   useEffect(() => {
-    if (!token) {
+    if (!signedIn) {
       setError("Please login again.");
       return;
     }
@@ -304,7 +304,7 @@ export default function AiPage() {
         return null;
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load AI workspace"));
-  }, [token, loadProjects]);
+  }, [signedIn, loadProjects]);
 
   useEffect(() => {
     if (!activeProjectId) return;
@@ -331,9 +331,9 @@ export default function AiPage() {
   }, [sources, selectedGenerationSourceId]);
 
   const onCreateChat = async () => {
-    if (!token || !activeProjectId) return;
+    if (!signedIn || !activeProjectId) return;
     try {
-      const created = await api.createAiChat(token, `Study Chat ${chats.length + 1}`, activeProjectId);
+      const created = await api.createAiChat(`Study Chat ${chats.length + 1}`, activeProjectId);
       setChats((prev) => [created.chat, ...prev]);
       setActiveChatId(created.chat.id);
       setMessages([]);
@@ -345,7 +345,7 @@ export default function AiPage() {
   const onAsk = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
-    if (!token || !activeChatId || !prompt.trim()) return;
+    if (!signedIn || !activeChatId || !prompt.trim()) return;
 
     const question = prompt.trim();
     const chatId = activeChatId;
@@ -357,7 +357,7 @@ export default function AiPage() {
     try {
       let sawToken = false;
 
-      await askAiInChatStream(token, chatId, question, {
+      await askAiInChatStream(chatId, question, {
         onToken: (chunk) => {
           sawToken = true;
           setStreamingText((current) => current + chunk);
@@ -369,14 +369,14 @@ export default function AiPage() {
       // buffered it away) - fall back to the plain endpoint so the student
       // still gets an answer.
       if (!sawToken) {
-        await api.askAiInChat(token, chatId, question);
+        await api.askAiInChat(chatId, question);
       }
 
       await loadMessages(chatId);
     } catch (err) {
       // The stream never opened at all; retry once without streaming.
       try {
-        await api.askAiInChat(token, chatId, question);
+        await api.askAiInChat(chatId, question);
         await loadMessages(chatId);
       } catch (fallbackError) {
         setError(fallbackError instanceof Error ? fallbackError.message : "AI request failed");
@@ -391,12 +391,12 @@ export default function AiPage() {
 
   const onUploadSource = async (event: FormEvent) => {
     event.preventDefault();
-    if (!token || !activeProjectId) return;
+    if (!signedIn || !activeProjectId) return;
 
     setError("");
     try {
       setIsUploading(true);
-      await api.uploadAiSource(token, {
+      await api.uploadAiSource({
         projectId: activeProjectId,
         title: sourceTitle,
         module: sourceModule,
@@ -420,12 +420,12 @@ export default function AiPage() {
 
   const onCreateProject = async (event: FormEvent) => {
     event.preventDefault();
-    if (!token || !newProjectName.trim()) return;
+    if (!signedIn || !newProjectName.trim()) return;
 
     setError("");
     try {
       setIsCreatingProject(true);
-      const created = await api.createAiProject(token, { name: newProjectName.trim() });
+      const created = await api.createAiProject({ name: newProjectName.trim() });
       setProjects((prev) => [created.project, ...prev]);
       setActiveProjectId(created.project.id);
       setNewProjectName("");
@@ -441,12 +441,12 @@ export default function AiPage() {
   };
 
   const onGenerateQuiz = async () => {
-    if (!token || !activeChatId) return;
+    if (!signedIn || !activeChatId) return;
     setError("");
 
     try {
       setIsGeneratingQuiz(true);
-      await api.generateQuizInChat(token, activeChatId, {
+      await api.generateQuizInChat(activeChatId, {
         sourceId: selectedGenerationSourceId === "all" ? undefined : selectedGenerationSourceId,
         count: 10,
       });
@@ -459,12 +459,12 @@ export default function AiPage() {
   };
 
   const onGenerateFlashcards = async () => {
-    if (!token || !activeChatId) return;
+    if (!signedIn || !activeChatId) return;
     setError("");
 
     try {
       setIsGeneratingFlashcards(true);
-      await api.generateFlashcardsInChat(token, activeChatId, {
+      await api.generateFlashcardsInChat(activeChatId, {
         sourceId: selectedGenerationSourceId === "all" ? undefined : selectedGenerationSourceId,
         count: 10,
       });

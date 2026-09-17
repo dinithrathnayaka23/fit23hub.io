@@ -16,7 +16,7 @@ import {
   urgencyOf,
 } from "@/lib/announcement-meta";
 import { api, resolveAssetUrl } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import type { Announcement, LiveSession, RecordedSession } from "@/lib/types";
 
 type OverviewStats = {
@@ -39,15 +39,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
+    if (!hasSession()) return;
 
     setLoading(true);
     try {
       const [overview, recordingData, liveData] = await Promise.all([
-        api.overview(token),
-        api.getRecordedSessions(token),
-        api.getLiveSessions(token),
+        api.overview(),
+        api.getRecordedSessions(),
+        api.getLiveSessions(),
       ]);
       setStats(overview.stats as OverviewStats);
       setRecordings(recordingData.sessions.slice(0, 2));
@@ -61,7 +60,7 @@ export default function DashboardPage() {
 
     // The deadline rail is secondary; if only it fails the rest of the page is
     // still worth showing, so it degrades to empty rather than to an error.
-    api.getUpcomingAnnouncements(token, 3)
+    api.getUpcomingAnnouncements(3)
       .then((result) => setUpcoming(result.announcements))
       .catch(() => setUpcoming([]));
   }, []);
@@ -71,11 +70,10 @@ export default function DashboardPage() {
   }, [load]);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) return;
+    if (!hasSession()) return;
 
     const timer = setInterval(() => {
-      api.getLiveSessions(token)
+      api.getLiveSessions()
         .then((liveData) => setLiveSessions(liveData.sessions))
         // Deliberately silent: the sessions already on screen stay, and the
         // next tick retries in 30s. Surfacing this would flash an error at a

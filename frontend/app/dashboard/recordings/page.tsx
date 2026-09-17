@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, resolveAssetUrl } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { RecordedSession } from "@/lib/types";
 
@@ -60,14 +60,14 @@ export default function RecordingsPage() {
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
 
   const load = useCallback(async () => {
-    if (!token) return;
+    if (!signedIn) return;
 
     setLoading(true);
     try {
-      const result = await api.getRecordedSessions(token, {
+      const result = await api.getRecordedSessions({
         module: moduleFilter || undefined,
         semester: semesterFilter || undefined,
         academicYear: academicYearFilter || undefined,
@@ -79,7 +79,7 @@ export default function RecordingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, moduleFilter, semesterFilter, academicYearFilter]);
+  }, [signedIn, moduleFilter, semesterFilter, academicYearFilter]);
 
   useEffect(() => {
     load();

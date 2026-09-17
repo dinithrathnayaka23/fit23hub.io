@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/ui/AppShell";
-import { getStoredUser, getToken } from "@/lib/auth";
+import { getStoredUser, } from "@/lib/auth";
 import { isAdminRole } from "@/lib/types";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -11,9 +11,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [authState, setAuthState] = useState<"checking" | "authorized" | "unauthenticated" | "forbidden">("checking");
 
   useEffect(() => {
-    const token = getToken();
     const user = getStoredUser();
-    const nextState = !token || !user ? "unauthenticated" : isAdminRole(user.role) ? "authorized" : "forbidden";
+    const nextState = !user ? "unauthenticated" : isAdminRole(user.role) ? "authorized" : "forbidden";
 
     if (nextState === "unauthenticated") {
       router.replace("/login");

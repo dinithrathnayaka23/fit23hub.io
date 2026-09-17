@@ -8,7 +8,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faDownload, faKey, faTriangleExclamation, faUpload, faUserGraduate } from "@fortawesome/free-solid-svg-icons";
 import { api, downloadDataExport, resolveAssetUrl } from "@/lib/api";
 import { AVATAR_ACCEPT, prepareAvatar } from "@/lib/avatar";
-import { clearAuth, getToken, getStoredUser, setAuth } from "@/lib/auth";
+import { clearStoredUser, hasSession, getStoredUser, setStoredUser } from "@/lib/auth";
 import PasswordField from "@/components/ui/PasswordField";
 import AvatarCropper from "@/components/ui/AvatarCropper";
 import type { User } from "@/lib/types";
@@ -43,25 +43,25 @@ export default function ProfilePage() {
   const [deleting, setDeleting] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!token) return;
+    if (!signedIn) return;
 
-    api.me(token)
+    api.me()
       .then((result) => {
         setUser(result.user);
-        setAuth(token, result.user);
+        setStoredUser(result.user);
         setStaleProfile(false);
       })
       // The page still renders from the details stored at sign-in, so this is
       // a staleness warning rather than a failure.
       .catch(() => setStaleProfile(true));
-  }, [token]);
+  }, [signedIn]);
 
   // Object URLs are revoked as soon as they are replaced, so choosing
   // several photos in a row cannot leak them.
@@ -103,7 +103,7 @@ export default function ProfilePage() {
     const form = event.currentTarget;
     setError("");
 
-    if (!token || !selectedFile) {
+    if (!signedIn || !selectedFile) {
       setError("Please choose an image first.");
       return;
     }
@@ -112,9 +112,9 @@ export default function ProfilePage() {
 
     try {
       const prepared = await prepareAvatar(selectedFile);
-      const result = await api.uploadProfileImage(token, prepared);
+      const result = await api.uploadProfileImage(prepared);
       setUser(result.user);
-      setAuth(token, result.user);
+      setStoredUser(result.user);
       setSelectedFile(null);
       setOriginalFile(null);
       showPreview(null);
@@ -132,7 +132,7 @@ export default function ProfilePage() {
     setPasswordError("");
     setPasswordSuccess("");
 
-    if (!token) {
+    if (!signedIn) {
       setPasswordError("Your session has expired. Please sign in again.");
       return;
     }
@@ -155,7 +155,7 @@ export default function ProfilePage() {
     setChangingPassword(true);
 
     try {
-      await api.changePassword(token, { currentPassword, newPassword });
+      await api.changePassword({ currentPassword, newPassword });
       setPasswordSuccess("Password updated successfully.");
       setCurrentPassword("");
       setNewPassword("");
@@ -168,13 +168,13 @@ export default function ProfilePage() {
   };
 
   const onExportData = async () => {
-    if (!token) return;
+    if (!signedIn) return;
     setPrivacyError("");
     setPrivacyNotice("");
     setExporting(true);
 
     try {
-      await downloadDataExport(token);
+      await downloadDataExport();
       setPrivacyNotice("Your data export has been downloaded.");
     } catch (err) {
       setPrivacyError(err instanceof Error ? err.message : "Failed to export your data");
@@ -184,7 +184,7 @@ export default function ProfilePage() {
   };
 
   const onDeleteAccount = async () => {
-    if (!token) return;
+    if (!signedIn) return;
     setDeleteError("");
 
     if (deleteConfirm !== "DELETE") {
@@ -194,8 +194,8 @@ export default function ProfilePage() {
 
     setDeleting(true);
     try {
-      await api.deleteAccount(token, { password: deletePassword, confirm: deleteConfirm });
-      clearAuth();
+      await api.deleteAccount({ password: deletePassword, confirm: deleteConfirm });
+      clearStoredUser();
       window.location.href = "/";
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete account");

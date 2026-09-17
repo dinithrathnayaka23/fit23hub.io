@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { LiveSession } from "@/lib/types";
 
@@ -33,14 +33,14 @@ export default function LivePage() {
   // Holds the latest poll so the retry button can trigger one between ticks.
   const pollRef = useRef<(() => Promise<void>) | null>(null);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
 
   useEffect(() => {
-    if (!token) return;
+    if (!signedIn) return;
 
     const poll = async () => {
       try {
-        const result = await api.getLiveSessions(token, {
+        const result = await api.getLiveSessions({
           module: moduleFilter || undefined,
           semester: semesterFilter || undefined,
           academicYear: academicYearFilter || undefined,
@@ -66,7 +66,7 @@ export default function LivePage() {
       clearTimeout(initial);
       clearInterval(timer);
     };
-  }, [token, moduleFilter, semesterFilter, academicYearFilter]);
+  }, [signedIn, moduleFilter, semesterFilter, academicYearFilter]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);

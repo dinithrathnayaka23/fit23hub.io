@@ -8,7 +8,7 @@ import { faUsers } from "@fortawesome/free-solid-svg-icons";
 import AnnouncementCard from "@/components/cards/AnnouncementCard";
 import { ANNOUNCEMENT_CATEGORIES, CATEGORY_ORDER } from "@/lib/announcement-meta";
 import { api, type AnnouncementInput } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { Announcement, AnnouncementCategory, AnnouncementReader } from "@/lib/types";
 
@@ -76,7 +76,7 @@ export default function AdminAnnouncementsPage() {
     pending: AnnouncementReader[];
   } | null>(null);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
 
   useEffect(() => {
     setMounted(true);
@@ -86,15 +86,15 @@ export default function AdminAnnouncementsPage() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!token) return;
+    if (!signedIn) return;
     const [live, bin] = await Promise.all([
-      api.adminAnnouncements(token, { pageSize: 50 }),
-      api.adminAnnouncements(token, { archived: true, pageSize: 50 }),
+      api.adminAnnouncements({ pageSize: 50 }),
+      api.adminAnnouncements({ archived: true, pageSize: 50 }),
     ]);
     setActive(live.announcements);
     setArchived(bin.announcements);
     setAudience(live.audience);
-  }, [token]);
+  }, [signedIn]);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -126,7 +126,7 @@ export default function AdminAnnouncementsPage() {
   });
 
   const submit = async (publish: boolean) => {
-    if (!token) return;
+    if (!signedIn) return;
 
     if (form.title.trim().length < 3 || form.body.trim().length < 3) {
       setError("A title and a message are both required.");
@@ -138,10 +138,10 @@ export default function AdminAnnouncementsPage() {
     setNotice("");
     try {
       if (editingId) {
-        await api.updateAnnouncement(token, editingId, buildPayload());
+        await api.updateAnnouncement(editingId, buildPayload());
         setNotice("Announcement updated.");
       } else {
-        await api.createAnnouncement(token, buildPayload(publish));
+        await api.createAnnouncement(buildPayload(publish));
         setNotice(publish ? "Published to the batch." : "Saved as a draft.");
         setView(publish ? "live" : "drafts");
       }
@@ -185,10 +185,10 @@ export default function AdminAnnouncementsPage() {
   };
 
   const openReaders = async (item: Announcement) => {
-    if (!token) return;
+    if (!signedIn) return;
     setBusyId(item.id);
     try {
-      const result = await api.announcementReaders(token, item.id);
+      const result = await api.announcementReaders(item.id);
       setReaders({ title: item.title, acknowledged: result.acknowledged, pending: result.pending });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the acknowledgement list");
@@ -394,7 +394,7 @@ export default function AdminAnnouncementsPage() {
                 view === "archived" ? (
                   <button
                     type="button"
-                    onClick={() => run(item.id, () => api.restoreAnnouncement(token!, item.id), "Announcement restored.")}
+                    onClick={() => run(item.id, () => api.restoreAnnouncement(item.id), "Announcement restored.")}
                     disabled={busyId === item.id}
                     className="rounded-lg border border-[rgba(52,211,153,0.4)] px-3 py-1.5 text-xs text-emerald-200 transition hover:bg-[rgba(52,211,153,0.12)] disabled:opacity-60"
                   >
@@ -422,7 +422,7 @@ export default function AdminAnnouncementsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => run(item.id, () => api.unpublishAnnouncement(token!, item.id), "Moved back to drafts.")}
+                          onClick={() => run(item.id, () => api.unpublishAnnouncement(item.id), "Moved back to drafts.")}
                           disabled={busyId === item.id}
                           className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:text-white disabled:opacity-60"
                         >
@@ -432,7 +432,7 @@ export default function AdminAnnouncementsPage() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => run(item.id, () => api.publishAnnouncement(token!, item.id), "Published to the batch.")}
+                        onClick={() => run(item.id, () => api.publishAnnouncement(item.id), "Published to the batch.")}
                         disabled={busyId === item.id}
                         className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs text-white transition hover:bg-[#2a4fb5] disabled:opacity-60"
                       >
@@ -441,7 +441,7 @@ export default function AdminAnnouncementsPage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => run(item.id, () => api.archiveAnnouncement(token!, item.id), "Moved to the archive.")}
+                      onClick={() => run(item.id, () => api.archiveAnnouncement(item.id), "Moved to the archive.")}
                       disabled={busyId === item.id}
                       className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] transition hover:border-red-400/40 hover:text-red-200 disabled:opacity-60"
                     >

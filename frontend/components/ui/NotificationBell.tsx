@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell, faBellSlash, faCheckDouble } from "@fortawesome/free-solid-svg-icons";
 import { api } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { TONE_CHIP, formatRelativeTime, notificationMeta } from "@/lib/notification-meta";
 import type { AppNotification } from "@/lib/types";
 
@@ -23,32 +23,26 @@ export default function NotificationBell({ admin }: { admin: boolean }) {
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const panelRef = useRef<HTMLDivElement>(null);
-  const tokenRef = useRef<string | null>(null);
+  const signedIn = hasSession();
 
   const allHref = admin ? "/admin/notifications" : "/dashboard/notifications";
 
-  if (tokenRef.current === null) {
-    tokenRef.current = getToken();
-  }
-
   const loadCount = useCallback(async () => {
-    const token = tokenRef.current;
-    if (!token) return;
+    if (!signedIn) return;
     try {
-      const result = await api.getUnreadNotificationCount(token);
+      const result = await api.getUnreadNotificationCount();
       setUnread(result.unread);
     } catch {
       // A failed badge refresh should stay silent - the bell is ambient UI.
     }
-  }, []);
+  }, [signedIn]);
 
   const loadPanel = useCallback(async () => {
-    const token = tokenRef.current;
-    if (!token) return;
+    if (!signedIn) return;
     setLoading(true);
     setError("");
     try {
-      const result = await api.getNotifications(token, { pageSize: PANEL_SIZE });
+      const result = await api.getNotifications({ pageSize: PANEL_SIZE });
       setItems(result.notifications);
       setUnread(result.unread);
     } catch (err) {
@@ -56,7 +50,7 @@ export default function NotificationBell({ admin }: { admin: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [signedIn]);
 
   // Poll the badge, and refresh it whenever the tab regains focus.
   useEffect(() => {
@@ -107,13 +101,11 @@ export default function NotificationBell({ admin }: { admin: boolean }) {
   };
 
   const openNotification = async (item: AppNotification) => {
-    const token = tokenRef.current;
-
-    if (!item.readAt && token) {
+    if (!item.readAt && signedIn) {
       // Optimistic: the row dims immediately, the server catches up.
       setItems((prev) => prev.map((n) => (n.id === item.id ? { ...n, readAt: new Date().toISOString() } : n)));
       setUnread((prev) => Math.max(0, prev - 1));
-      api.markNotificationRead(token, item.id).catch(() => loadCount());
+      api.markNotificationRead(item.id).catch(() => loadCount());
     }
 
     setOpen(false);
@@ -121,15 +113,14 @@ export default function NotificationBell({ admin }: { admin: boolean }) {
   };
 
   const markAllRead = async () => {
-    const token = tokenRef.current;
-    if (!token || unread === 0) return;
+    if (!signedIn || unread === 0) return;
 
     const stamp = new Date().toISOString();
     setItems((prev) => prev.map((n) => (n.readAt ? n : { ...n, readAt: stamp })));
     setUnread(0);
 
     try {
-      await api.markAllNotificationsRead(token);
+      await api.markAllNotificationsRead();
     } catch {
       loadPanel();
     }
