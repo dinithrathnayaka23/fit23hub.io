@@ -9,6 +9,7 @@ import { faDownload, faKey, faRightFromBracket, faTriangleExclamation, faUpload,
 import { api, downloadDataExport, resolveAssetUrl } from "@/lib/api";
 import { AVATAR_ACCEPT, prepareAvatar } from "@/lib/avatar";
 import { clearStoredUser, hasSession, getStoredUser, setStoredUser } from "@/lib/auth";
+import { useEscapeKey } from "@/lib/use-escape-key";
 import PasswordField from "@/components/ui/PasswordField";
 import AvatarCropper from "@/components/ui/AvatarCropper";
 import type { User } from "@/lib/types";
@@ -223,6 +224,8 @@ export default function ProfilePage() {
   };
 
   const imageSrc = user?.profileImageUrl ? resolveAssetUrl(user.profileImageUrl) : "/avatar-student.svg";
+
+  useEscapeKey(() => setDeleteOpen(false), deleteOpen && !deleting);
 
   return (
     <div className="space-y-4">

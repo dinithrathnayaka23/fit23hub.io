@@ -10,6 +10,7 @@ import { ANNOUNCEMENT_CATEGORIES, CATEGORY_ORDER } from "@/lib/announcement-meta
 import { api, type AnnouncementInput } from "@/lib/api";
 import { hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
+import { useEscapeKey } from "@/lib/use-escape-key";
 import type { Announcement, AnnouncementCategory, AnnouncementReader } from "@/lib/types";
 
 type View = "live" | "drafts" | "archived";
@@ -206,6 +207,8 @@ export default function AdminAnnouncementsPage() {
     { value: "drafts", label: `Drafts (${drafts.length})` },
     { value: "archived", label: `Archive (${archived.length})` },
   ];
+
+  useEscapeKey(() => setReaders(null), readers !== null);
 
   return (
     <section className="space-y-4">

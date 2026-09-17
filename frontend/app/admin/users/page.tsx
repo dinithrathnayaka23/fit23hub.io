@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { getStoredUser, hasSession } from "@/lib/auth";
 import { ErrorState, LoadingState } from "@/components/ui/StateCard";
+import { useEscapeKey } from "@/lib/use-escape-key";
 import type { User } from "@/lib/types";
 
 const formatRemovedAt = (value?: string | null) =>
@@ -137,6 +138,9 @@ export default function AdminUsersPage() {
       setError(err instanceof Error ? err.message : "Failed to restore the account");
     }
   };
+
+  useEscapeKey(() => setSuspendTarget(null), Boolean(suspendTarget) && !saving);
+  useEscapeKey(() => setRemoveTarget(null), Boolean(removeTarget) && !saving);
 
   return (
     <section className="space-y-4">
