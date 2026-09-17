@@ -277,8 +277,10 @@ router.post("/login", async (req, res) => {
     };
 
     // The token is never returned in the body - it goes straight into an
-    // httpOnly cookie that page scripts cannot read.
-    setSessionCookies(res, signToken(safeUser));
+    // httpOnly cookie that page scripts cannot read. tokenVersion is internal
+    // revocation plumbing, so it rides along to signToken without going into
+    // the response the client actually sees.
+    setSessionCookies(res, signToken({ ...safeUser, tokenVersion: user.tokenVersion }));
     return res.json({ user: safeUser });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -292,6 +294,23 @@ router.post("/login", async (req, res) => {
 router.post("/logout", (req, res) => {
   clearSessionCookies(res);
   return res.json({ message: "Signed out" });
+});
+
+/**
+ * Bumps tokenVersion, which immediately invalidates every token issued for
+ * this account - including the one making this request, which is the point:
+ * "sign out everywhere" means everywhere, so the caller signs back in fresh
+ * rather than silently keeping one session alive.
+ */
+router.post("/logout-all", requireAuth, async (req, res) => {
+  await prisma.user.update({
+    where: { id: req.user.id },
+    data: { tokenVersion: { increment: 1 } },
+  });
+
+  invalidateAuthUserCache(req.user.id);
+  clearSessionCookies(res);
+  return res.json({ message: "Signed out of all devices" });
 });
 
 router.get("/me", requireAuth, async (req, res) => {
@@ -317,12 +336,16 @@ router.post("/change-password", requireAuth, async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(input.newPassword, 10);
-    await prisma.user.update({
+    // Bumping tokenVersion invalidates every token issued before this moment -
+    // including one that may have leaked - while this request's own session is
+    // reissued below so the device making the change stays signed in.
+    const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
     });
 
     invalidateAuthUserCache(user.id);
+    setSessionCookies(res, signToken({ ...req.user, tokenVersion: updated.tokenVersion }));
 
     dispatch(() => notifyUser(user.id, {
       type: "PASSWORD_CHANGED",
@@ -331,7 +354,7 @@ router.post("/change-password", requireAuth, async (req, res) => {
       link: "/dashboard/profile",
     }));
 
-    return res.json({ message: "Password updated successfully" });
+    return res.json({ message: "Password updated successfully. You have been signed out of any other devices." });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: error.issues[0]?.message || "Invalid input", errors: error.issues });
@@ -431,7 +454,10 @@ router.post("/reset-password", async (req, res) => {
     const passwordHash = await bcrypt.hash(input.newPassword, 10);
 
     await prisma.$transaction([
-      prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+      // Also invalidates any session already open for this account - if the
+      // reset was triggered because the account was compromised, an
+      // attacker's active session should not survive it.
+      prisma.user.update({ where: { id: record.userId }, data: { passwordHash, tokenVersion: { increment: 1 } } }),
       prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
       prisma.passwordResetToken.deleteMany({ where: { userId: record.userId, usedAt: null } }),
     ]);
