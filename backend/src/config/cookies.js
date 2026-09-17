@@ -27,7 +27,9 @@ const isProduction = process.env.NODE_ENV === "production";
 const sameSite = String(process.env.COOKIE_SAMESITE || "lax").toLowerCase();
 const secure = String(process.env.COOKIE_SECURE ?? (isProduction ? "1" : "0")) === "1" || sameSite === "none";
 
-export const sessionMaxAgeMs = parseDuration(process.env.JWT_EXPIRES_IN, 7 * 86_400_000);
+// Mirrors jwt.js's own default so the cookie never outlives - or expires
+// before - the token it carries when JWT_EXPIRES_IN is left unset.
+export const sessionMaxAgeMs = parseDuration(process.env.JWT_EXPIRES_IN, 86_400_000);
 
 if (isProduction && sameSite === "none" && !secure) {
   throw new Error("COOKIE_SAMESITE=none requires COOKIE_SECURE=1.");
