@@ -167,6 +167,7 @@ export default function MaterialsPage() {
           <div className="relative lg:col-span-2">
             <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--muted)]" />
             <input
+              data-shortcut-search
               className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] py-2 pl-10 pr-3 text-sm outline-none focus:border-[var(--accent)]"
               placeholder="Search by title/module/uploader"
               type="search"
