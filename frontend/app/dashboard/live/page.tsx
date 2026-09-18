@@ -100,7 +100,7 @@ export default function LivePage() {
 
   return (
     <section className="space-y-4">
-      <div className="glass-card grid gap-3 p-4 md:grid-cols-3">
+      <div className="glass-card grid grid-cols-1 gap-3 p-4 md:grid-cols-3">
         <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Filter module" value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)} />
         <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" value={semesterFilter} onChange={(e) => onSemesterFilterChange(Number(e.target.value))}>
           <option value={0}>All Semesters</option>
@@ -133,11 +133,11 @@ export default function LivePage() {
         <div key={group} className="space-y-3">
           <h3 className="text-base font-semibold text-[#d5ecff]">{group}</h3>
           {items.map((session) => (
-            <article key={session.id} className="glass-card p-5">
+            <article key={session.id} className="glass-card p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs uppercase tracking-[0.12em] text-[var(--accent)]">Kuppi Live Session</p>
-                  <h3 className="mt-1 text-lg font-semibold">{session.title}</h3>
+                  <h3 className="mt-1 break-words text-lg font-semibold">{session.title}</h3>
                   <p className="mt-1 text-sm text-[var(--muted)]">{session.module} | {session.academicYear} | Semester {session.semester}</p>
                   <p className="mt-1 text-sm text-[var(--muted)]">{session.description || "No description"}</p>
                   {session.scheduledFor && (
@@ -157,14 +157,16 @@ export default function LivePage() {
                   {session.isLive ? "LIVE NOW" : now && session.scheduledFor && new Date(session.scheduledFor).getTime() > now ? "Upcoming" : "Offline"}
                 </span>
               </div>
-              <a href={session.streamUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex rounded-lg bg-[var(--primary)] px-4 py-2 text-sm hover:bg-[#2a4fb5]">
-                Join on Teams
-              </a>
-              {session.recordingUrl && (
-                <a href={session.recordingUrl} target="_blank" rel="noreferrer" className="ml-2 mt-4 inline-flex rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted)] hover:text-white">
-                  Watch Recording
+              <div className="mt-4 flex flex-wrap gap-2">
+                <a href={session.streamUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-lg bg-[var(--primary)] px-4 py-2 text-sm hover:bg-[#2a4fb5]">
+                  Join on Teams
                 </a>
-              )}
+                {session.recordingUrl && (
+                  <a href={session.recordingUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted)] hover:text-white">
+                    Watch Recording
+                  </a>
+                )}
+              </div>
             </article>
           ))}
         </div>

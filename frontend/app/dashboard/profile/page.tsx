@@ -242,9 +242,9 @@ export default function ProfilePage() {
           We could not refresh your profile just now, so these details come from your last sign-in.
         </p>
       )}
-      <section className="glass-card p-6">
+      <section className="glass-card p-4 sm:p-6">
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <img
               src={imageSrc}
               alt="Profile image"
@@ -253,16 +253,17 @@ export default function ProfilePage() {
               onError={(event) => {
                 event.currentTarget.src = "/avatar-student.svg";
               }}
-              className="h-24 w-24 rounded-2xl border border-[var(--border)] object-cover"
+              className="h-20 w-20 shrink-0 rounded-2xl border border-[var(--border)] object-cover sm:h-24 sm:w-24"
             />
-            <div>
-              <h2 className="text-xl font-semibold">{user?.fullName || "Student"}</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">Index No: {user?.indexNo || "-"} | {user?.email || "-"}</p>
+            <div className="min-w-0">
+              <h2 className="break-words text-lg font-semibold sm:text-xl">{user?.fullName || "Student"}</h2>
+              <p className="mt-1 text-sm text-[var(--muted)]">Index No: {user?.indexNo || "-"}</p>
+              <p className="mt-0.5 break-all text-sm text-[var(--muted)]">{user?.email || "-"}</p>
             </div>
           </div>
         </div>
 
-        <form onSubmit={onUploadImage} className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
+        <form onSubmit={onUploadImage} className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]">
           <div className="flex min-w-0 items-center gap-3">
             {previewUrl && (
               <div className="shrink-0 text-center">
@@ -303,7 +304,7 @@ export default function ProfilePage() {
         </p>
         {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
           <article className="rounded-xl border border-[var(--border)] p-4">
             <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-[var(--accent)]"><FontAwesomeIcon icon={faUserGraduate} className="h-3 w-3" />Account Role</p>
             <p className="mt-3 text-sm text-[var(--muted)]">{user?.role || "STUDENT"}</p>
@@ -315,7 +316,7 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <section className="glass-card p-6">
+      <section className="glass-card p-4 sm:p-6">
         <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-[var(--accent)]">
           <FontAwesomeIcon icon={faKey} className="h-3 w-3" />
           Security
@@ -325,7 +326,7 @@ export default function ProfilePage() {
           Use at least 10 characters including uppercase, lowercase, a number, and a symbol.
         </p>
 
-        <form onSubmit={onChangePassword} className="mt-5 grid gap-4 md:max-w-xl md:grid-cols-2">
+        <form onSubmit={onChangePassword} className="mt-5 grid grid-cols-1 gap-4 md:max-w-xl md:grid-cols-2">
           <div className="md:col-span-2">
             <PasswordField
               label="Current password"
@@ -384,7 +385,7 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <section className="glass-card p-6">
+      <section className="glass-card p-4 sm:p-6">
         <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-[var(--accent)]">
           <FontAwesomeIcon icon={faDownload} className="h-3 w-3" />
           Data &amp; Privacy
