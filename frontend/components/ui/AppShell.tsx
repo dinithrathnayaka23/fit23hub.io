@@ -27,6 +27,7 @@ import { useEscapeKey } from "@/lib/use-escape-key";
 import { useOnlineStatus } from "@/lib/use-online";
 import TopBar from "@/components/ui/TopBar";
 import type { User } from "@/lib/types";
+import BrandMark from "@/components/ui/BrandMark";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -126,9 +127,7 @@ function Sidebar({ groups, pathname, rootHref, admin, user, onNavigate, onClose 
     <div className="flex h-full flex-col">
       <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-5">
         <Link href={rootHref} onClick={onNavigate} className="flex min-w-0 items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#38bdf8,#1e3a8a)] text-sm font-bold text-white shadow-[0_0_14px_rgba(56,189,248,0.35)]">
-            F
-          </span>
+          <BrandMark size={40} priority />
           <span className="min-w-0">
             <span className="block bg-gradient-to-r from-[#8de6ff] via-[#38bdf8] to-[#6f9dff] bg-clip-text text-base font-bold leading-tight tracking-wide text-transparent">
               FIT23HUB
