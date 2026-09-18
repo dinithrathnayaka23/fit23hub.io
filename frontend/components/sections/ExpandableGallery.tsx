@@ -107,7 +107,7 @@ export default function ExpandableGallery({ sections }: ExpandableGalleryProps) 
               </div>
             </FadeIn>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {visibleCards.map((entry, cardIndex) => (
                 <FadeIn key={`${section.section}-${entry.title}-${cardIndex}`} delay={0.03 * cardIndex}>
                   <GalleryCard {...entry} />

@@ -94,7 +94,7 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {features.map((feature) => (
             <LandingFeatureCard
               key={feature.title}
@@ -120,7 +120,7 @@ export default function Home() {
               </span>
             </div>
           </FadeIn>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {batchPhotos.map((entry, index) => (
               <FadeIn key={entry.title} delay={0.04 * index} className="h-full">
                 <GalleryCard {...entry} compact />

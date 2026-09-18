@@ -212,7 +212,7 @@ export default function AdminAnnouncementsPage() {
 
   return (
     <section className="space-y-4">
-      <form className="glass-card grid gap-3 p-4 md:grid-cols-2 md:p-5" onSubmit={(e) => e.preventDefault()}>
+      <form className="glass-card grid grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-5" onSubmit={(e) => e.preventDefault()}>
         <div className="md:col-span-2">
           <h2 className="text-base font-semibold text-white">
             {editingId ? "Edit announcement" : "Post an announcement"}
@@ -490,7 +490,7 @@ export default function AdminAnnouncementsPage() {
                   have acknowledged this.
                 </p>
 
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.1em] text-amber-200">
                       Not yet ({readers.pending.length})

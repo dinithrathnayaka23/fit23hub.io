@@ -111,7 +111,7 @@ export default function AdminPage() {
             </p>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard label="Students" value={String(stats.students ?? 0)} hint="Active student accounts" icon={faUserGraduate} />
             <StatCard label="Materials" value={String(stats.materials ?? 0)} hint="Published in the library" icon={faBookOpen} />
             <StatCard label="Live now" value={String(stats.liveNow ?? 0)} hint="Sessions streaming right now" icon={faTowerBroadcast} />

@@ -112,7 +112,7 @@ export default function RecordingsPage() {
 
   return (
     <section className="space-y-4">
-      <div className="glass-card grid gap-3 p-4 md:grid-cols-3">
+      <div className="glass-card grid grid-cols-1 gap-3 p-4 md:grid-cols-3">
         <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Filter module" value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)} />
         <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" value={semesterFilter} onChange={(e) => onSemesterFilterChange(Number(e.target.value))}>
           <option value={0}>All Semesters</option>
