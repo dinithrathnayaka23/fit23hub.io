@@ -10,15 +10,15 @@ type VideoCardProps = {
 
 export default function VideoCard({ title, subtitle, actionLabel = "Watch Session", url }: VideoCardProps) {
   return (
-    <article className="glass-card p-5">
+    <article className="glass-card flex h-full flex-col p-5">
       <p className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">Recorded Session</p>
-      <h3 className="mt-2 text-lg font-semibold">{title}</h3>
-      {subtitle && <p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p>}
+      <h3 className="mt-2 text-base font-semibold text-white">{title}</h3>
+      {subtitle && <p className="mb-4 mt-1 line-clamp-2 text-sm text-[var(--muted)]">{subtitle}</p>}
       <a
         href={url || "#"}
         target={url ? "_blank" : undefined}
         rel={url ? "noreferrer" : undefined}
-        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm hover:bg-[#2a4fb5]"
+        className="mt-auto inline-flex w-fit items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm hover:bg-[#2a4fb5]"
       >
         <FontAwesomeIcon icon={faCirclePlay} className="h-4 w-4" />
         {actionLabel}
