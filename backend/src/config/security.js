@@ -55,6 +55,8 @@ const keyFor = (req) => {
 
 const isUserKey = (key) => key.startsWith("user:");
 
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 const tooMany = (message) => ({ message });
 
 // Endpoints where one account can be targeted by guessing: a password, or an
@@ -74,13 +76,14 @@ const ACCOUNT_SENSITIVE = new Set([
 export function createRateLimiters(config = securityConfig) {
   // express-rate-limit keys on IP by default. Every student on campus shares
   // one public address, so a per-IP budget would be shared by the whole batch.
-  const perUserOrIp = (perUser) => rateLimit({
+  const perUserOrIp = (perUser, extra = {}) => rateLimit({
     windowMs: config.windowMs,
     keyGenerator: keyFor,
     limit: (req) => (isUserKey(keyFor(req)) ? perUser : config.anonymousPerIp),
     standardHeaders: true,
     legacyHeaders: false,
     message: tooMany("Too many requests. Please wait a moment and try again."),
+    ...extra,
   });
 
   const accountLimiter = rateLimit({
@@ -100,7 +103,17 @@ export function createRateLimiters(config = securityConfig) {
 
   return {
     apiRateLimiter: perUserOrIp(config.apiPerUser),
-    aiRateLimiter: perUserOrIp(config.aiPerUser),
+    // Only generation is expensive. Opening the AI page lists projects, chats
+    // and sources; counting those against the tight AI budget would lock a
+    // student out for simply moving around the page, so reads share the
+    // ordinary API budget and the AI limit applies to what calls a model.
+    aiRateLimiter: [
+      perUserOrIp(config.apiPerUser),
+      perUserOrIp(config.aiPerUser, {
+        skip: (req) => SAFE_METHODS.has(req.method),
+        message: tooMany("You have reached the AI request limit for now. Please try again in a few minutes."),
+      }),
+    ],
     // Sign-in routes still get the IP ceiling for anonymous callers, plus the
     // per-account limit that makes brute force impractical.
     authRateLimiter: [perUserOrIp(config.apiPerUser), accountLimiter],
