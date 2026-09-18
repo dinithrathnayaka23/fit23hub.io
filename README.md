@@ -71,7 +71,7 @@ owner can destroy anything permanently, and only from the archive.
 | [The AI assistant](#the-ai-assistant) | Provider fallback, retrieval, and graceful degradation |
 | [API reference](#api-reference) | Every endpoint |
 | [Security](#security) | What is enforced, and where |
-| [Deployment](#deployment) | Render, Docker, and horizontal scaling |
+| [Deployment](#deployment) | AWS + Vercel, Render, Docker, and horizontal scaling |
 | [Project structure](#project-structure) | Where things live |
 
 ---
@@ -534,6 +534,21 @@ Small things that decide whether a platform feels trustworthy at 8pm the night b
 
 ## Deployment
 
+### AWS (EC2 + RDS + S3) with the frontend on Vercel
+
+The production setup, step by step, is in **[deploy/AWS.md](deploy/AWS.md)**: account safety, the
+S3 bucket and IAM role, RDS, the EC2 server, Vercel, and moving to your own domain later.
+
+| File | Purpose |
+|---|---|
+| `deploy/docker-compose.prod.yml` | The API behind Caddy, which obtains HTTPS certificates itself |
+| `deploy/Caddyfile` | Caddy's site config (3 GB upload limit, streamed AI answers) |
+| `deploy/.env.production.example` | Every production setting, with the values to use on AWS |
+
+Uploads go to S3 with `STORAGE_DRIVER=s3`. The server's IAM role grants access, so no AWS keys are
+stored anywhere. Until the API has its own subdomain, the frontend's `API_PROXY_TARGET` makes
+Vercel forward `/api` to it, which keeps the session cookies first-party.
+
 ### Render (one-click via `render.yaml`)
 
 The backend is described declaratively: it generates the Prisma client at build, pushes the schema
@@ -599,7 +614,7 @@ fit23hub.io/
 │     ├─ auth.ts · types.ts
 │     └─ use-online.ts
 │
-├─ deploy/                      # Dockerfile, compose, nginx
+├─ deploy/                      # Dockerfile, compose (AWS + scaling), Caddy, nginx, AWS.md
 └─ render.yaml
 ```
 
