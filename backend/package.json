@@ -16,7 +16,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@prisma/client": "^6.7.0",
+    "@aws-sdk/client-s3": "^3.1135.0",
+    "@aws-sdk/lib-storage": "^3.1135.0",
+    "@prisma/client": "^6.19.3",
     "@supabase/supabase-js": "^2.57.4",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",
@@ -32,13 +34,13 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^10.0.1",
     "pdf-parse": "^1.1.1",
+    "prisma": "^6.19.3",
     "sharp": "^0.34.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "artillery": "^2.0.21",
     "nodemon": "^3.1.7",
-    "prisma": "^6.7.0",
     "vitest": "^4.1.11"
   }
 }
