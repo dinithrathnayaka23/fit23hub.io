@@ -1,0 +1,11 @@
+# The build context is the repo root; only backend/ is copied in.
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+!**/.env.example
+.git
+frontend
+backend/uploads
+backend/tests
+backend/loadtest
