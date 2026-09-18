@@ -68,20 +68,37 @@ function connectionMessage(timedOut: boolean) {
     : "Cannot reach the FIT23Hub server. It may be restarting - try again in a moment.";
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-  token?: string,
-): Promise<T> {
+/** Reads the readable half of the double-submit CSRF pair. */
+export function readCsrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)fit23hub_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Credentials and the CSRF echo, applied identically to every call. */
+function buildHeaders(options: RequestInit): Headers {
   const headers = new Headers(options.headers || {});
 
   if (!(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  const method = (options.method || "GET").toUpperCase();
+  if (UNSAFE_METHODS.has(method)) {
+    const csrf = readCsrfToken();
+    if (csrf) headers.set("X-CSRF-Token", csrf);
   }
+
+  return headers;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const headers = buildHeaders(options);
 
   const url = `${API_BASE}${path}`;
   const controller = new AbortController();
@@ -95,6 +112,8 @@ async function request<T>(
     response = await fetch(url, {
       ...options,
       headers,
+      // Sends the httpOnly session cookie, including cross-origin.
+      credentials: "include",
       signal: controller.signal,
     });
   } catch {
@@ -128,22 +147,31 @@ export const api = {
     });
   },
 
+  async logout() {
+    return request<{ message: string }>("/auth/logout", { method: "POST" });
+  },
+
+  /** Revokes every token issued for this account, including the current one. */
+  async logoutAll() {
+    return request<{ message: string }>("/auth/logout-all", { method: "POST" });
+  },
+
   async login(input: { email: string; password: string }) {
-    return request<{ user: User; token: string }>("/auth/login", {
+    return request<{ user: User }>("/auth/login", {
       method: "POST",
       body: JSON.stringify(input),
     });
   },
 
-  async me(token: string) {
-    return request<{ user: User }>("/auth/me", {}, token);
+  async me() {
+    return request<{ user: User }>("/auth/me", {});
   },
 
-  async changePassword(token: string, payload: { currentPassword: string; newPassword: string }) {
+  async changePassword(payload: { currentPassword: string; newPassword: string }) {
     return request<{ message: string }>("/auth/change-password", {
       method: "POST",
       body: JSON.stringify(payload),
-    }, token);
+    });
   },
 
   async forgotPassword(email: string) {
@@ -186,14 +214,14 @@ export const api = {
     );
   },
 
-  async deleteAccount(token: string, payload: { password: string; confirm: string }) {
+  async deleteAccount(payload: { password: string; confirm: string }) {
     return request<{ message: string }>("/auth/account", {
       method: "DELETE",
       body: JSON.stringify(payload),
-    }, token);
+    });
   },
 
-  async getNotifications(token: string, query?: { page?: number; pageSize?: number; filter?: "all" | "unread" }) {
+  async getNotifications(query?: { page?: number; pageSize?: number; filter?: "all" | "unread" }) {
     const params = new URLSearchParams();
     if (query?.page) params.set("page", String(query.page));
     if (query?.pageSize) params.set("pageSize", String(query.pageSize));
@@ -203,40 +231,40 @@ export const api = {
       notifications: AppNotification[];
       unread: number;
       pagination: PaginationMeta;
-    }>(`/notifications${suffix}`, {}, token);
+    }>(`/notifications${suffix}`, {});
   },
 
-  async getUnreadNotificationCount(token: string) {
-    return request<{ unread: number }>("/notifications/unread-count", {}, token);
+  async getUnreadNotificationCount() {
+    return request<{ unread: number }>("/notifications/unread-count", {});
   },
 
-  async markNotificationRead(token: string, id: string) {
-    return request<{ message: string; unread: number }>(`/notifications/${id}/read`, { method: "PATCH" }, token);
+  async markNotificationRead(id: string) {
+    return request<{ message: string; unread: number }>(`/notifications/${id}/read`, { method: "PATCH" });
   },
 
-  async markAllNotificationsRead(token: string) {
-    return request<{ message: string; unread: number }>("/notifications/read-all", { method: "POST" }, token);
+  async markAllNotificationsRead() {
+    return request<{ message: string; unread: number }>("/notifications/read-all", { method: "POST" });
   },
 
-  async deleteNotification(token: string, id: string) {
-    return request<{ message: string; unread: number }>(`/notifications/${id}`, { method: "DELETE" }, token);
+  async deleteNotification(id: string) {
+    return request<{ message: string; unread: number }>(`/notifications/${id}`, { method: "DELETE" });
   },
 
-  async clearNotifications(token: string) {
-    return request<{ message: string; unread: number }>("/notifications", { method: "DELETE" }, token);
+  async clearNotifications() {
+    return request<{ message: string; unread: number }>("/notifications", { method: "DELETE" });
   },
 
-  async uploadProfileImage(token: string, file: File) {
+  async uploadProfileImage(file: File) {
     const formData = new FormData();
     formData.append("image", file);
 
     return request<{ user: User }>("/auth/profile-image", {
       method: "POST",
       body: formData,
-    }, token);
+    });
   },
 
-  async getMaterials(token: string, query?: {
+  async getMaterials(query?: {
     q?: string;
     category?: string;
     module?: string;
@@ -259,10 +287,10 @@ export const api = {
     return request<{
       materials: Material[];
       pagination: { page: number; pageSize: number; total: number; totalPages: number };
-    }>(`/materials${suffix}`, {}, token);
+    }>(`/materials${suffix}`, {});
   },
 
-  async uploadMaterial(token: string, payload: {
+  async uploadMaterial(payload: {
     title: string;
     module: string;
     semester: number;
@@ -285,14 +313,14 @@ export const api = {
     return request<{ material: Material }>("/materials", {
       method: "POST",
       body: formData,
-    }, token);
+    });
   },
 
-  async deleteMaterial(token: string, id: string) {
-    return request<{ message: string }>(`/materials/${id}`, { method: "DELETE" }, token);
+  async deleteMaterial(id: string) {
+    return request<{ message: string }>(`/materials/${id}`, { method: "DELETE" });
   },
 
-  async getArchivedMaterials(token: string, query?: { page?: number; pageSize?: number }) {
+  async getArchivedMaterials(query?: { page?: number; pageSize?: number }) {
     const params = new URLSearchParams();
     if (query?.page) params.set("page", String(query.page));
     if (query?.pageSize) params.set("pageSize", String(query.pageSize));
@@ -300,19 +328,18 @@ export const api = {
     return request<{ materials: Material[]; pagination: PaginationMeta }>(
       `/materials/admin/archived${suffix}`,
       {},
-      token,
     );
   },
 
-  async restoreMaterial(token: string, id: string) {
-    return request<{ material: Material }>(`/materials/admin/${id}/restore`, { method: "POST" }, token);
+  async restoreMaterial(id: string) {
+    return request<{ material: Material }>(`/materials/admin/${id}/restore`, { method: "POST" });
   },
 
-  async purgeMaterial(token: string, id: string) {
-    return request<{ message: string }>(`/materials/admin/${id}/purge`, { method: "DELETE" }, token);
+  async purgeMaterial(id: string) {
+    return request<{ message: string }>(`/materials/admin/${id}/purge`, { method: "DELETE" });
   },
 
-  async getAnnouncements(token: string, query?: {
+  async getAnnouncements(query?: {
     category?: AnnouncementCategory;
     filter?: "upcoming" | "pending";
     page?: number;
@@ -327,23 +354,21 @@ export const api = {
     return request<{ announcements: Announcement[]; pending: number; pagination: PaginationMeta }>(
       `/announcements${suffix}`,
       {},
-      token,
     );
   },
 
-  async getUpcomingAnnouncements(token: string, limit = 3) {
-    return request<{ announcements: Announcement[] }>(`/announcements/upcoming?limit=${limit}`, {}, token);
+  async getUpcomingAnnouncements(limit = 3) {
+    return request<{ announcements: Announcement[] }>(`/announcements/upcoming?limit=${limit}`, {});
   },
 
-  async acknowledgeAnnouncement(token: string, id: string) {
+  async acknowledgeAnnouncement(id: string) {
     return request<{ acknowledged: boolean; acknowledgedCount: number }>(
       `/announcements/${id}/acknowledge`,
       { method: "POST" },
-      token,
     );
   },
 
-  async adminAnnouncements(token: string, query?: { archived?: boolean; page?: number; pageSize?: number }) {
+  async adminAnnouncements(query?: { archived?: boolean; page?: number; pageSize?: number }) {
     const params = new URLSearchParams();
     if (query?.archived) params.set("archived", "true");
     if (query?.page) params.set("page", String(query.page));
@@ -352,50 +377,49 @@ export const api = {
     return request<{ announcements: Announcement[]; audience: number; pagination: PaginationMeta }>(
       `/announcements/admin/all${suffix}`,
       {},
-      token,
     );
   },
 
-  async createAnnouncement(token: string, payload: AnnouncementInput) {
+  async createAnnouncement(payload: AnnouncementInput) {
     return request<{ announcement: Announcement }>("/announcements/admin", {
       method: "POST",
       body: JSON.stringify(payload),
-    }, token);
+    });
   },
 
-  async updateAnnouncement(token: string, id: string, payload: AnnouncementInput) {
+  async updateAnnouncement(id: string, payload: AnnouncementInput) {
     return request<{ announcement: Announcement }>(`/announcements/admin/${id}`, {
       method: "PUT",
       body: JSON.stringify(payload),
-    }, token);
+    });
   },
 
-  async publishAnnouncement(token: string, id: string) {
-    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/publish`, { method: "POST" }, token);
+  async publishAnnouncement(id: string) {
+    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/publish`, { method: "POST" });
   },
 
-  async unpublishAnnouncement(token: string, id: string) {
-    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/unpublish`, { method: "POST" }, token);
+  async unpublishAnnouncement(id: string) {
+    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/unpublish`, { method: "POST" });
   },
 
-  async archiveAnnouncement(token: string, id: string) {
-    return request<{ message: string }>(`/announcements/admin/${id}`, { method: "DELETE" }, token);
+  async archiveAnnouncement(id: string) {
+    return request<{ message: string }>(`/announcements/admin/${id}`, { method: "DELETE" });
   },
 
-  async restoreAnnouncement(token: string, id: string) {
-    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/restore`, { method: "POST" }, token);
+  async restoreAnnouncement(id: string) {
+    return request<{ announcement: Announcement }>(`/announcements/admin/${id}/restore`, { method: "POST" });
   },
 
-  async announcementReaders(token: string, id: string) {
+  async announcementReaders(id: string) {
     return request<{
       announcement: { id: string; title: string; publishedAt: string | null };
       acknowledged: AnnouncementReader[];
       pending: AnnouncementReader[];
       audience: number;
-    }>(`/announcements/admin/${id}/acknowledgements`, {}, token);
+    }>(`/announcements/admin/${id}/acknowledgements`, {});
   },
 
-  async getRecordedSessions(token: string, query?: { module?: string; semester?: number; academicYear?: string; page?: number; pageSize?: number }) {
+  async getRecordedSessions(query?: { module?: string; semester?: number; academicYear?: string; page?: number; pageSize?: number }) {
     const params = new URLSearchParams();
     if (query?.module) params.set("module", query.module);
     if (query?.semester) params.set("semester", String(query.semester));
@@ -403,10 +427,10 @@ export const api = {
     if (query?.page) params.set("page", String(query.page));
     if (query?.pageSize) params.set("pageSize", String(query.pageSize));
     const suffix = params.toString() ? `?${params.toString()}` : "";
-    return request<{ sessions: RecordedSession[]; pagination: PaginationMeta }>(`/recordings${suffix}`, {}, token);
+    return request<{ sessions: RecordedSession[]; pagination: PaginationMeta }>(`/recordings${suffix}`, {});
   },
 
-  async createRecordedSession(token: string, payload: { title: string; module: string; semester: number; academicYear: string; description?: string; videoUrl?: string; file?: File }) {
+  async createRecordedSession(payload: { title: string; module: string; semester: number; academicYear: string; description?: string; videoUrl?: string; file?: File }) {
     const formData = new FormData();
     formData.append("title", payload.title);
     formData.append("module", payload.module);
@@ -419,14 +443,14 @@ export const api = {
     return request<{ session: RecordedSession }>("/recordings", {
       method: "POST",
       body: formData,
-    }, token);
+    });
   },
 
-  async deleteRecordedSession(token: string, id: string) {
-    return request<{ message: string }>(`/recordings/${id}`, { method: "DELETE" }, token);
+  async deleteRecordedSession(id: string) {
+    return request<{ message: string }>(`/recordings/${id}`, { method: "DELETE" });
   },
 
-  async getLiveSessions(token: string, query?: { module?: string; semester?: number; academicYear?: string; page?: number; pageSize?: number }) {
+  async getLiveSessions(query?: { module?: string; semester?: number; academicYear?: string; page?: number; pageSize?: number }) {
     const params = new URLSearchParams();
     if (query?.module) params.set("module", query.module);
     if (query?.semester) params.set("semester", String(query.semester));
@@ -434,82 +458,82 @@ export const api = {
     if (query?.page) params.set("page", String(query.page));
     if (query?.pageSize) params.set("pageSize", String(query.pageSize));
     const suffix = params.toString() ? `?${params.toString()}` : "";
-    return request<{ sessions: LiveSession[]; pagination: PaginationMeta }>(`/live${suffix}`, {}, token);
+    return request<{ sessions: LiveSession[]; pagination: PaginationMeta }>(`/live${suffix}`, {});
   },
 
-  async createLiveSession(token: string, payload: { title: string; module: string; semester: number; academicYear: string; description?: string; streamUrl: string; scheduledFor?: string; recordingUrl?: string }) {
+  async createLiveSession(payload: { title: string; module: string; semester: number; academicYear: string; description?: string; streamUrl: string; scheduledFor?: string; recordingUrl?: string }) {
     return request<{ session: LiveSession }>("/live", {
       method: "POST",
       body: JSON.stringify(payload),
-    }, token);
+    });
   },
 
-  async updateLiveSession(token: string, id: string, payload: { title?: string; module?: string; semester?: number; academicYear?: string; description?: string; streamUrl?: string; scheduledFor?: string; recordingUrl?: string }) {
+  async updateLiveSession(id: string, payload: { title?: string; module?: string; semester?: number; academicYear?: string; description?: string; streamUrl?: string; scheduledFor?: string; recordingUrl?: string }) {
     return request<{ session: LiveSession }>(`/live/${id}`, {
       method: "PUT",
       body: JSON.stringify(payload),
-    }, token);
+    });
   },
 
-  async setLiveStatus(token: string, id: string, isLive: boolean) {
+  async setLiveStatus(id: string, isLive: boolean) {
     return request<{ session: LiveSession }>(`/live/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ isLive }),
-    }, token);
+    });
   },
 
-  async deleteLiveSession(token: string, id: string) {
-    return request<{ message: string }>(`/live/${id}`, { method: "DELETE" }, token);
+  async deleteLiveSession(id: string) {
+    return request<{ message: string }>(`/live/${id}`, { method: "DELETE" });
   },
 
-  async adminOverview(token: string) {
-    return request<{ stats: Record<string, number> }>("/admin/overview", {}, token);
+  async adminOverview() {
+    return request<{ stats: Record<string, number> }>("/admin/overview", {});
   },
 
-  async overview(token: string) {
-    return request<{ stats: Record<string, number> }>("/overview", {}, token);
+  async overview() {
+    return request<{ stats: Record<string, number> }>("/overview", {});
   },
 
-  async adminUsers(token: string, query?: { q?: string; page?: number; pageSize?: number }) {
+  async adminUsers(query?: { q?: string; page?: number; pageSize?: number }) {
     const params = new URLSearchParams();
     if (query?.q) params.set("q", query.q);
     if (query?.page) params.set("page", String(query.page));
     if (query?.pageSize) params.set("pageSize", String(query.pageSize));
     const suffix = params.toString() ? `?${params.toString()}` : "";
-    return request<{ users: User[]; pagination: PaginationMeta }>(`/admin/users${suffix}`, {}, token);
+    return request<{ users: User[]; pagination: PaginationMeta }>(`/admin/users${suffix}`, {});
   },
 
-  async updateUser(token: string, id: string, payload: { role?: "STUDENT" | "ADMIN"; status?: "ACTIVE" | "SUSPENDED"; reason?: string }) {
+  async updateUser(id: string, payload: { role?: "STUDENT" | "ADMIN"; status?: "ACTIVE" | "SUSPENDED"; reason?: string }) {
     return request<{ user: User }>(`/admin/users/${id}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
-    }, token);
+    });
   },
 
-  async getArchivedUsers(token: string, query?: { page?: number; pageSize?: number }) {
+  async getArchivedUsers(query?: { page?: number; pageSize?: number }) {
     const params = new URLSearchParams();
     if (query?.page) params.set("page", String(query.page));
     if (query?.pageSize) params.set("pageSize", String(query.pageSize));
     const suffix = params.toString() ? `?${params.toString()}` : "";
-    return request<{ users: User[]; pagination: PaginationMeta }>(`/admin/users/archived${suffix}`, {}, token);
+    return request<{ users: User[]; pagination: PaginationMeta }>(`/admin/users/archived${suffix}`, {});
   },
 
-  async archiveUser(token: string, id: string) {
-    return request<{ user: User; message: string }>(`/admin/users/${id}`, { method: "DELETE" }, token);
+  async archiveUser(id: string) {
+    return request<{ user: User; message: string }>(`/admin/users/${id}`, { method: "DELETE" });
   },
 
-  async restoreUser(token: string, id: string) {
-    return request<{ user: User }>(`/admin/users/${id}/restore`, { method: "POST" }, token);
+  async restoreUser(id: string) {
+    return request<{ user: User }>(`/admin/users/${id}/restore`, { method: "POST" });
   },
 
-  async askAi(token: string, prompt: string) {
+  async askAi(prompt: string) {
     return request<{ response: string }>("/ai/query", {
       method: "POST",
       body: JSON.stringify({ prompt }),
-    }, token);
+    });
   },
 
-  async getAiSources(token: string) {
+  async getAiSources() {
     return request<{ sources: Array<{
       id: string;
       title: string;
@@ -521,10 +545,10 @@ export const api = {
       fileUrl?: string | null;
       projectId?: string | null;
       createdAt: string;
-    }> }>("/ai/sources", {}, token);
+    }> }>("/ai/sources", {});
   },
 
-  async getAiSourcesByProject(token: string, projectId: string) {
+  async getAiSourcesByProject(projectId: string) {
     const suffix = `?projectId=${encodeURIComponent(projectId)}`;
     return request<{ sources: Array<{
       id: string;
@@ -537,10 +561,10 @@ export const api = {
       fileUrl?: string | null;
       projectId?: string | null;
       createdAt: string;
-    }> }>(`/ai/sources${suffix}`, {}, token);
+    }> }>(`/ai/sources${suffix}`, {});
   },
 
-  async uploadAiSource(token: string, payload: {
+  async uploadAiSource(payload: {
     projectId?: string;
     title: string;
     module: string;
@@ -562,47 +586,47 @@ export const api = {
     return request<{ source: { id: string } }>("/ai/sources", {
       method: "POST",
       body: formData,
-    }, token);
+    });
   },
 
-  async getAiChats(token: string) {
-    return request<{ chats: Array<{ id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string }> }>("/ai/chats", {}, token);
+  async getAiChats() {
+    return request<{ chats: Array<{ id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string }> }>("/ai/chats", {});
   },
 
-  async getAiChatsByProject(token: string, projectId: string) {
+  async getAiChatsByProject(projectId: string) {
     const suffix = `?projectId=${encodeURIComponent(projectId)}`;
-    return request<{ chats: Array<{ id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string }> }>(`/ai/chats${suffix}`, {}, token);
+    return request<{ chats: Array<{ id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string }> }>(`/ai/chats${suffix}`, {});
   },
 
-  async createAiChat(token: string, title?: string, projectId?: string) {
+  async createAiChat(title?: string, projectId?: string) {
     return request<{ chat: { id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string } }>("/ai/chats", {
       method: "POST",
       body: JSON.stringify({ title, projectId }),
-    }, token);
+    });
   },
 
-  async getAiProjects(token: string) {
-    return request<{ projects: Array<{ id: string; name: string; description?: string | null; createdAt: string; updatedAt: string }> }>("/ai/projects", {}, token);
+  async getAiProjects() {
+    return request<{ projects: Array<{ id: string; name: string; description?: string | null; createdAt: string; updatedAt: string }> }>("/ai/projects", {});
   },
 
-  async createAiProject(token: string, payload: { name: string; description?: string }) {
+  async createAiProject(payload: { name: string; description?: string }) {
     return request<{ project: { id: string; name: string; description?: string | null; createdAt: string; updatedAt: string } }>("/ai/projects", {
       method: "POST",
       body: JSON.stringify(payload),
-    }, token);
+    });
   },
 
-  async getAiMessages(token: string, chatId: string) {
+  async getAiMessages(chatId: string) {
     return request<{ messages: Array<{
       id: string;
       role: string;
       content: string;
       createdAt: string;
       citations: Array<{ id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number }>;
-    }> }>(`/ai/chats/${chatId}/messages`, {}, token);
+    }> }>(`/ai/chats/${chatId}/messages`, {});
   },
 
-  async askAiInChat(token: string, chatId: string, prompt: string) {
+  async askAiInChat(chatId: string, prompt: string) {
     return request<{
       response: string;
       message: {
@@ -617,10 +641,10 @@ export const api = {
     }>(`/ai/chats/${chatId}/query`, {
       method: "POST",
       body: JSON.stringify({ prompt }),
-    }, token);
+    });
   },
 
-  async generateQuizInChat(token: string, chatId: string, payload?: { sourceId?: string; count?: number }) {
+  async generateQuizInChat(chatId: string, payload?: { sourceId?: string; count?: number }) {
     return request<{
       response: string;
       message: {
@@ -636,10 +660,10 @@ export const api = {
     }>(`/ai/chats/${chatId}/quiz`, {
       method: "POST",
       body: JSON.stringify(payload || {}),
-    }, token);
+    });
   },
 
-  async generateFlashcardsInChat(token: string, chatId: string, payload?: { sourceId?: string; count?: number }) {
+  async generateFlashcardsInChat(chatId: string, payload?: { sourceId?: string; count?: number }) {
     return request<{
       response: string;
       message: {
@@ -655,7 +679,7 @@ export const api = {
     }>(`/ai/chats/${chatId}/flashcards`, {
       method: "POST",
       body: JSON.stringify(payload || {}),
-    }, token);
+    });
   },
 };
 
@@ -663,9 +687,9 @@ export const api = {
  * Streams the personal-data export to a file. This bypasses request() because
  * the endpoint returns an attachment rather than a JSON body.
  */
-export async function downloadDataExport(token: string): Promise<void> {
+export async function downloadDataExport(): Promise<void> {
   const response = await fetch(`${API_BASE}/auth/export-data`, {
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -701,11 +725,10 @@ type StreamHandlers = {
 
 /**
  * Streams an answer over SSE, decoding the frames by hand because EventSource
- * cannot send a POST body or an Authorization header. Throws ApiError if the
+ * cannot send a POST body or custom headers. Throws ApiError if the
  * stream never opens, so the caller can fall back to the plain endpoint.
  */
 export async function askAiInChatStream(
-  token: string,
   chatId: string,
   prompt: string,
   handlers: StreamHandlers = {},
@@ -714,7 +737,8 @@ export async function askAiInChatStream(
   const response = await fetch(`${API_BASE}/ai/chats/${chatId}/query/stream`, {
     method: "POST",
     signal,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    credentials: "include",
+    headers: buildHeaders({ method: "POST" }),
     body: JSON.stringify({ prompt }),
   });
 

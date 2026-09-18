@@ -7,7 +7,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faArrowRightToBracket, faEnvelope, faEnvelopeCircleCheck, faEye, faEyeSlash, faLock } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
 import { api, ApiError } from "@/lib/api";
-import { setAuth } from "@/lib/auth";
+import { setStoredUser } from "@/lib/auth";
 import SuspendedModal from "@/components/SuspendedModal";
 import { isAdminRole } from "@/lib/types";
 
@@ -60,7 +60,7 @@ export default function LoginPage() {
 
     try {
       const result = await api.login({ email, password });
-      setAuth(result.token, result.user);
+      setStoredUser(result.user);
       // One sign-in for everyone; where you land depends on your role.
       router.push(isAdminRole(result.user.role) ? "/admin" : "/dashboard");
     } catch (err) {

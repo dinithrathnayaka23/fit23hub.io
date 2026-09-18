@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@/lib/api";
-import { getStoredUser, getToken } from "@/lib/auth";
+import { getStoredUser, hasSession } from "@/lib/auth";
 import { ErrorState, LoadingState } from "@/components/ui/StateCard";
+import { useEscapeKey } from "@/lib/use-escape-key";
 import type { User } from "@/lib/types";
 
 const formatRemovedAt = (value?: string | null) =>
@@ -41,7 +42,7 @@ export default function AdminUsersPage() {
   const [mounted, setMounted] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
   const currentUser = useMemo(() => getStoredUser(), []);
   // Granting or revoking admin access is reserved for the platform owner.
   const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
@@ -51,14 +52,14 @@ export default function AdminUsersPage() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!token) return;
+    if (!signedIn) return;
     const [active, archive] = await Promise.all([
-      api.adminUsers(token),
-      api.getArchivedUsers(token),
+      api.adminUsers(),
+      api.getArchivedUsers(),
     ]);
     setUsers(active.users);
     setRemoved(archive.users);
-  }, [token]);
+  }, [signedIn]);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -73,11 +74,11 @@ export default function AdminUsersPage() {
   }, [reload]);
 
   const updateUser = async (id: string, payload: { role?: "STUDENT" | "ADMIN"; status?: "ACTIVE" | "SUSPENDED"; reason?: string }) => {
-    if (!token) return;
+    if (!signedIn) return;
     setError("");
     setNotice("");
     try {
-      await api.updateUser(token, id, payload);
+      await api.updateUser(id, payload);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update user");
@@ -109,11 +110,11 @@ export default function AdminUsersPage() {
   };
 
   const confirmRemove = async () => {
-    if (!removeTarget || !token) return;
+    if (!removeTarget) return;
     setSaving(true);
     setError("");
     try {
-      await api.archiveUser(token, removeTarget.id);
+      await api.archiveUser(removeTarget.id);
       await refresh();
       setNotice(`${removeTarget.fullName} was removed. The account can be restored from the Removed tab.`);
       setRemoveTarget(null);
@@ -126,17 +127,20 @@ export default function AdminUsersPage() {
   };
 
   const onRestore = async (user: User) => {
-    if (!token) return;
+    if (!signedIn) return;
     setError("");
     setNotice("");
     try {
-      await api.restoreUser(token, user.id);
+      await api.restoreUser(user.id);
       await refresh();
       setNotice(`${user.fullName} was restored.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to restore the account");
     }
   };
+
+  useEscapeKey(() => setSuspendTarget(null), Boolean(suspendTarget) && !saving);
+  useEscapeKey(() => setRemoveTarget(null), Boolean(removeTarget) && !saving);
 
   return (
     <section className="space-y-4">

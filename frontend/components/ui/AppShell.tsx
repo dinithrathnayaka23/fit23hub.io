@@ -19,7 +19,8 @@ import {
   faVideo,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
-import { clearAuth, getStoredUser } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { clearStoredUser, getStoredUser } from "@/lib/auth";
 import { useOnlineStatus } from "@/lib/use-online";
 import TopBar from "@/components/ui/TopBar";
 
@@ -110,8 +111,11 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
           <div className="mt-4 shrink-0 border-t border-[var(--border)] pt-4">
             <button
               type="button"
-              onClick={() => {
-                clearAuth();
+              onClick={async () => {
+                // Clear the local copy regardless: a failed call must not
+                // leave the UI looking signed in.
+                await api.logout().catch(() => {});
+                clearStoredUser();
                 window.location.href = "/";
               }}
               className="group flex w-full items-center gap-2.5 rounded-lg border border-[rgba(248,113,113,0.28)] bg-[rgba(248,113,113,0.06)] px-3 py-2.5 text-sm font-medium text-[#fca5a5] transition-all duration-200 hover:border-[rgba(248,113,113,0.55)] hover:bg-[rgba(248,113,113,0.14)] hover:text-[#fecaca] hover:shadow-[0_0_16px_rgba(248,113,113,0.22)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(248,113,113,0.5)]"

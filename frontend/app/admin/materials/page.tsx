@@ -5,7 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBoxArchive, faRotateLeft, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import MaterialCard from "@/components/cards/MaterialCard";
 import { api } from "@/lib/api";
-import { getStoredUser, getToken } from "@/lib/auth";
+import { getStoredUser, hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { Material, MaterialCategory } from "@/lib/types";
 
@@ -40,19 +40,19 @@ export default function AdminMaterialsPage() {
   const [loadError, setLoadError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
   // Permanent deletion is irreversible, so only the platform owner sees it.
   const isSuperAdmin = useMemo(() => getStoredUser()?.role === "SUPER_ADMIN", []);
 
   const refresh = useCallback(async () => {
-    if (!token) return;
+    if (!signedIn) return;
     const [active, bin] = await Promise.all([
-      api.getMaterials(token),
-      api.getArchivedMaterials(token),
+      api.getMaterials(),
+      api.getArchivedMaterials(),
     ]);
     setMaterials(active.materials);
     setArchived(bin.materials);
-  }, [token]);
+  }, [signedIn]);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -83,10 +83,10 @@ export default function AdminMaterialsPage() {
 
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
-    if (!token) return;
+    if (!signedIn) return;
 
     try {
-      await api.uploadMaterial(token, {
+      await api.uploadMaterial({
         title,
         module,
         semester,
@@ -109,17 +109,17 @@ export default function AdminMaterialsPage() {
   };
 
   const onArchive = (item: Material) =>
-    run(item.id, () => api.deleteMaterial(token!, item.id), `"${item.title}" moved to the archive.`);
+    run(item.id, () => api.deleteMaterial(item.id), `"${item.title}" moved to the archive.`);
 
   const onRestore = (item: Material) =>
-    run(item.id, () => api.restoreMaterial(token!, item.id), `"${item.title}" restored.`);
+    run(item.id, () => api.restoreMaterial(item.id), `"${item.title}" restored.`);
 
   const onPurge = (item: Material) => {
     const confirmed = window.confirm(
       `Permanently delete "${item.title}"? This cannot be undone and the file will be gone for good.`,
     );
     if (!confirmed) return;
-    return run(item.id, () => api.purgeMaterial(token!, item.id), `"${item.title}" permanently deleted.`);
+    return run(item.id, () => api.purgeMaterial(item.id), `"${item.title}" permanently deleted.`);
   };
 
   const list = view === "active" ? materials : archived;

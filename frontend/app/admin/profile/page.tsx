@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -8,6 +8,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faDownload,
   faKey,
+  faRightFromBracket,
   faShieldHalved,
   faTriangleExclamation,
   faUpload,
@@ -15,8 +16,10 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { api, downloadDataExport, resolveAssetUrl } from "@/lib/api";
 import { AVATAR_ACCEPT, prepareAvatar } from "@/lib/avatar";
-import { clearAuth, getToken, getStoredUser, setAuth } from "@/lib/auth";
+import { clearStoredUser, hasSession, getStoredUser, setStoredUser } from "@/lib/auth";
+import { useEscapeKey } from "@/lib/use-escape-key";
 import PasswordField from "@/components/ui/PasswordField";
+import AvatarCropper from "@/components/ui/AvatarCropper";
 import type { User } from "@/lib/types";
 
 const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,72}$/;
@@ -45,6 +48,10 @@ function Detail({ label, value, tone = "default" }: DetailProps) {
 export default function AdminProfilePage() {
   const [user, setUser] = useState<User | null>(getStoredUser());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // The untouched pick, kept so the crop can be reopened and redone.
+  const [cropSource, setCropSource] = useState<File | null>(null);
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageError, setImageError] = useState("");
   const [staleProfile, setStaleProfile] = useState(false);
   const [savingImage, setSavingImage] = useState(false);
@@ -56,6 +63,9 @@ export default function AdminProfilePage() {
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
 
+  const [signingOutAll, setSigningOutAll] = useState(false);
+  const [signOutAllError, setSignOutAllError] = useState("");
+
   const [exporting, setExporting] = useState(false);
   const [privacyError, setPrivacyError] = useState("");
   const [privacyNotice, setPrivacyNotice] = useState("");
@@ -66,32 +76,67 @@ export default function AdminProfilePage() {
   const [deleting, setDeleting] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!token) return;
+    if (!signedIn) return;
 
-    api.me(token)
+    api.me()
       .then((result) => {
         setUser(result.user);
-        setAuth(token, result.user);
+        setStoredUser(result.user);
         setStaleProfile(false);
       })
       // The page still renders from the details stored at sign-in, so this is
       // a staleness warning rather than a failure.
       .catch(() => setStaleProfile(true));
-  }, [token]);
+  }, [signedIn]);
+
+  // Object URLs are revoked as soon as they are replaced, so choosing
+  // several photos in a row cannot leak them.
+  const showPreview = useCallback((blob: File | null) => {
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return blob ? URL.createObjectURL(blob) : null;
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const onPickFile = (picked: File | null) => {
+    setImageError("");
+    setOriginalFile(picked);
+    setSelectedFile(null);
+    showPreview(null);
+    setCropSource(picked);
+  };
+
+  const onCropConfirmed = (cropped: File) => {
+    setCropSource(null);
+    setSelectedFile(cropped);
+    showPreview(cropped);
+  };
+
+  // Undecodable or too small to crop: send the original and let the server
+  // explain precisely what is wrong with it.
+  const onCropUnavailable = useCallback((original: File) => {
+    setCropSource(null);
+    setSelectedFile(original);
+    showPreview(null);
+  }, [showPreview]);
 
   const onUploadImage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
     setImageError("");
 
-    if (!token || !selectedFile) {
+    if (!signedIn || !selectedFile) {
       setImageError("Please choose an image first.");
       return;
     }
@@ -100,10 +145,12 @@ export default function AdminProfilePage() {
 
     try {
       const prepared = await prepareAvatar(selectedFile);
-      const result = await api.uploadProfileImage(token, prepared);
+      const result = await api.uploadProfileImage(prepared);
       setUser(result.user);
-      setAuth(token, result.user);
+      setStoredUser(result.user);
       setSelectedFile(null);
+      setOriginalFile(null);
+      showPreview(null);
       // Clears the stale filename so the input matches the now-empty selection.
       form.reset();
     } catch (err) {
@@ -118,7 +165,7 @@ export default function AdminProfilePage() {
     setPasswordError("");
     setPasswordSuccess("");
 
-    if (!token) {
+    if (!signedIn) {
       setPasswordError("Your session has expired. Please sign in again.");
       return;
     }
@@ -141,7 +188,7 @@ export default function AdminProfilePage() {
     setChangingPassword(true);
 
     try {
-      await api.changePassword(token, { currentPassword, newPassword });
+      await api.changePassword({ currentPassword, newPassword });
       setPasswordSuccess("Password updated successfully.");
       setCurrentPassword("");
       setNewPassword("");
@@ -153,14 +200,30 @@ export default function AdminProfilePage() {
     }
   };
 
+  // Also ends this device's own session, deliberately: "everywhere" means
+  // everywhere, so the caller signs back in fresh rather than one tab quietly
+  // staying logged in with a stale sense of what "signed out" meant.
+  const onSignOutAllDevices = async () => {
+    setSignOutAllError("");
+    setSigningOutAll(true);
+    try {
+      await api.logoutAll();
+      clearStoredUser();
+      window.location.href = "/login";
+    } catch (err) {
+      setSignOutAllError(err instanceof Error ? err.message : "Failed to sign out of other devices");
+      setSigningOutAll(false);
+    }
+  };
+
   const onExportData = async () => {
-    if (!token) return;
+    if (!signedIn) return;
     setPrivacyError("");
     setPrivacyNotice("");
     setExporting(true);
 
     try {
-      await downloadDataExport(token);
+      await downloadDataExport();
       setPrivacyNotice("Your data export has been downloaded.");
     } catch (err) {
       setPrivacyError(err instanceof Error ? err.message : "Failed to export your data");
@@ -170,7 +233,7 @@ export default function AdminProfilePage() {
   };
 
   const onDeleteAccount = async () => {
-    if (!token) return;
+    if (!signedIn) return;
     setDeleteError("");
 
     if (deleteConfirm !== "DELETE") {
@@ -180,8 +243,8 @@ export default function AdminProfilePage() {
 
     setDeleting(true);
     try {
-      await api.deleteAccount(token, { password: deletePassword, confirm: deleteConfirm });
-      clearAuth();
+      await api.deleteAccount({ password: deletePassword, confirm: deleteConfirm });
+      clearStoredUser();
       window.location.href = "/";
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete account");
@@ -192,8 +255,18 @@ export default function AdminProfilePage() {
   const imageSrc = user?.profileImageUrl ? resolveAssetUrl(user.profileImageUrl) : "/avatar-student.svg";
   const verified = Boolean(user?.emailVerifiedAt);
 
+  useEscapeKey(() => setDeleteOpen(false), deleteOpen && !deleting);
+
   return (
     <div className="space-y-4">
+      {cropSource && (
+        <AvatarCropper
+          file={cropSource}
+          onCancel={() => setCropSource(null)}
+          onConfirm={onCropConfirmed}
+          onFallback={onCropUnavailable}
+        />
+      )}
       {staleProfile && (
         <p className="rounded-lg border border-[rgba(250,204,21,0.4)] bg-[rgba(250,204,21,0.08)] px-3 py-2 text-xs text-amber-200">
           We could not refresh your profile just now, so these details come from your last sign-in.
@@ -230,12 +303,31 @@ export default function AdminProfilePage() {
         </div>
 
         <form onSubmit={onUploadImage} className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
-          <input
-            type="file"
-            accept={AVATAR_ACCEPT}
-            onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-            className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm"
-          />
+          <div className="flex min-w-0 items-center gap-3">
+            {previewUrl && (
+              <div className="shrink-0 text-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt="Cropped preview"
+                  className="h-14 w-14 rounded-full border border-[rgba(56,189,248,0.5)] object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => originalFile && setCropSource(originalFile)}
+                  className="mt-1 block w-full text-[10px] text-[var(--accent)] hover:underline"
+                >
+                  Adjust
+                </button>
+              </div>
+            )}
+            <input
+              type="file"
+              accept={AVATAR_ACCEPT}
+              onChange={(e) => onPickFile(e.target.files?.[0] || null)}
+              className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm"
+            />
+          </div>
           <button
             type="submit"
             disabled={savingImage}
@@ -246,8 +338,8 @@ export default function AdminProfilePage() {
           </button>
         </form>
         <p className="mt-2 text-xs text-[var(--muted)]">
-          JPEG, PNG or WebP, at least 128×128 px. Photos are cropped to a square, resized, and stripped of
-          location and camera data before they are saved.
+          JPEG, PNG or WebP, at least 128×128 px. Position the photo in the circle, then save. Location
+          and camera data are stripped before it is stored.
         </p>
         {imageError && <p className="mt-2 text-sm text-red-300">{imageError}</p>}
 
@@ -317,6 +409,24 @@ export default function AdminProfilePage() {
             </button>
           </div>
         </form>
+
+        <div className="mt-6 border-t border-[var(--border)] pt-5">
+          <h3 className="text-sm font-semibold">Sign out everywhere</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Ends every session for this account, including this one - useful if you signed in on a
+            shared or borrowed device and forgot to sign out. You will need to sign in again here too.
+          </p>
+          {signOutAllError && <p className="mt-2 text-sm text-red-300">{signOutAllError}</p>}
+          <button
+            type="button"
+            onClick={onSignOutAllDevices}
+            disabled={signingOutAll}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted)] transition hover:border-red-400/40 hover:text-red-200 disabled:opacity-70"
+          >
+            <FontAwesomeIcon icon={faRightFromBracket} className="h-4 w-4" />
+            {signingOutAll ? "Signing out..." : "Sign out of all devices"}
+          </button>
+        </div>
       </section>
 
       <section className="glass-card p-6">

@@ -3,6 +3,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBan } from "@fortawesome/free-solid-svg-icons";
 import { AnimatePresence, motion } from "framer-motion";
+import { useEscapeKey } from "@/lib/use-escape-key";
 
 type SuspendedModalProps = {
   open: boolean;
@@ -12,6 +13,8 @@ type SuspendedModalProps = {
 };
 
 export default function SuspendedModal({ open, message, reason, onClose }: SuspendedModalProps) {
+  useEscapeKey(onClose, open);
+
   return (
     <AnimatePresence>
       {open && (

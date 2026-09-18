@@ -5,7 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowsRotate } from "@fortawesome/free-solid-svg-icons";
 import StatCard from "@/components/ui/StatCard";
 import { api } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { ErrorState } from "@/components/ui/StateCard";
 
 const REFRESH_INTERVAL_MS = 20_000;
@@ -16,15 +16,15 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
   const inFlight = useRef(false);
 
   const load = useCallback(async () => {
-    if (!token || inFlight.current) return;
+    if (!signedIn || inFlight.current) return;
     inFlight.current = true;
     setRefreshing(true);
     try {
-      const result = await api.adminOverview(token);
+      const result = await api.adminOverview();
       setStats(result.stats);
       setUpdatedAt(Date.now());
       setError(null);
@@ -34,7 +34,7 @@ export default function AdminPage() {
       inFlight.current = false;
       setRefreshing(false);
     }
-  }, [token]);
+  }, [signedIn]);
 
   // Initial load + poll on an interval so counts follow registrations and
   // deletions without a manual refresh.

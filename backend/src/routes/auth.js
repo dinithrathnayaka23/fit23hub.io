@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { signToken } from "../utils/jwt.js";
+import { clearSessionCookies, setSessionCookies } from "../config/cookies.js";
 import { invalidateAuthUserCache, requireAuth } from "../middleware/auth.js";
 import { uploadAvatar } from "../utils/upload.js";
 import { deleteStoredFile, storeBuffer } from "../utils/storage.js";
@@ -275,8 +276,12 @@ router.post("/login", async (req, res) => {
       status: user.status,
     };
 
-    const token = signToken(safeUser);
-    return res.json({ user: safeUser, token });
+    // The token is never returned in the body - it goes straight into an
+    // httpOnly cookie that page scripts cannot read. tokenVersion is internal
+    // revocation plumbing, so it rides along to signToken without going into
+    // the response the client actually sees.
+    setSessionCookies(res, signToken({ ...safeUser, tokenVersion: user.tokenVersion }));
+    return res.json({ user: safeUser });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: "Invalid input", errors: error.issues });
@@ -284,6 +289,28 @@ router.post("/login", async (req, res) => {
 
     return res.status(500).json({ message: "Failed to login" });
   }
+});
+
+router.post("/logout", (req, res) => {
+  clearSessionCookies(res);
+  return res.json({ message: "Signed out" });
+});
+
+/**
+ * Bumps tokenVersion, which immediately invalidates every token issued for
+ * this account - including the one making this request, which is the point:
+ * "sign out everywhere" means everywhere, so the caller signs back in fresh
+ * rather than silently keeping one session alive.
+ */
+router.post("/logout-all", requireAuth, async (req, res) => {
+  await prisma.user.update({
+    where: { id: req.user.id },
+    data: { tokenVersion: { increment: 1 } },
+  });
+
+  await invalidateAuthUserCache(req.user.id);
+  clearSessionCookies(res);
+  return res.json({ message: "Signed out of all devices" });
 });
 
 router.get("/me", requireAuth, async (req, res) => {
@@ -309,12 +336,16 @@ router.post("/change-password", requireAuth, async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(input.newPassword, 10);
-    await prisma.user.update({
+    // Bumping tokenVersion invalidates every token issued before this moment -
+    // including one that may have leaked - while this request's own session is
+    // reissued below so the device making the change stays signed in.
+    const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
     });
 
-    invalidateAuthUserCache(user.id);
+    await invalidateAuthUserCache(user.id);
+    setSessionCookies(res, signToken({ ...req.user, tokenVersion: updated.tokenVersion }));
 
     dispatch(() => notifyUser(user.id, {
       type: "PASSWORD_CHANGED",
@@ -323,7 +354,7 @@ router.post("/change-password", requireAuth, async (req, res) => {
       link: "/dashboard/profile",
     }));
 
-    return res.json({ message: "Password updated successfully" });
+    return res.json({ message: "Password updated successfully. You have been signed out of any other devices." });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: error.issues[0]?.message || "Invalid input", errors: error.issues });
@@ -423,12 +454,15 @@ router.post("/reset-password", async (req, res) => {
     const passwordHash = await bcrypt.hash(input.newPassword, 10);
 
     await prisma.$transaction([
-      prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+      // Also invalidates any session already open for this account - if the
+      // reset was triggered because the account was compromised, an
+      // attacker's active session should not survive it.
+      prisma.user.update({ where: { id: record.userId }, data: { passwordHash, tokenVersion: { increment: 1 } } }),
       prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
       prisma.passwordResetToken.deleteMany({ where: { userId: record.userId, usedAt: null } }),
     ]);
 
-    invalidateAuthUserCache(record.userId);
+    await invalidateAuthUserCache(record.userId);
 
     dispatch(() => notifyUser(record.userId, {
       type: "PASSWORD_CHANGED",
@@ -485,7 +519,7 @@ router.post("/verify-email", async (req, res) => {
       prisma.emailVerificationToken.deleteMany({ where: { userId: record.userId, usedAt: null } }),
     ]);
 
-    invalidateAuthUserCache(record.userId);
+    await invalidateAuthUserCache(record.userId);
 
     if (!record.user.emailVerifiedAt) {
       dispatch(() => notifyUser(record.userId, {
@@ -644,7 +678,8 @@ router.delete("/account", requireAuth, async (req, res) => {
       prisma.user.delete({ where: { id: userId } }),
     ]);
 
-    invalidateAuthUserCache(userId);
+    await invalidateAuthUserCache(userId);
+    clearSessionCookies(res);
     // A profile photo is personal data, so it goes with the account.
     await deleteStoredFile(user.profileImageUrl);
 
@@ -718,7 +753,7 @@ router.post("/profile-image", requireAuth, receiveAvatar, async (req, res) => {
       },
     });
 
-    invalidateAuthUserCache(req.user.id);
+    await invalidateAuthUserCache(req.user.id);
 
     // Only after the new URL is saved, so a failed update never leaves the
     // account pointing at a file that has already been removed.

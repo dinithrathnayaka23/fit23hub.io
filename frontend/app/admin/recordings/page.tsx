@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api, resolveAssetUrl } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { RecordedSession } from "@/lib/types";
 
@@ -16,7 +16,7 @@ function isMp4File(file: File) {
 }
 
 export default function AdminRecordingsPage() {
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
   const [sessions, setSessions] = useState<RecordedSession[]>([]);
   const [title, setTitle] = useState("");
   const [module, setModule] = useState("");
@@ -30,31 +30,31 @@ export default function AdminRecordingsPage() {
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(() => {
-    if (!token) return;
+    if (!signedIn) return;
 
     setLoading(true);
-    api.getRecordedSessions(token)
+    api.getRecordedSessions()
       .then((result) => {
         setSessions(result.sessions);
         setLoadError(null);
       })
       .catch((err) => setLoadError(err))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [signedIn]);
 
   useEffect(() => {
     reload();
   }, [reload]);
 
   const refreshSessions = async () => {
-    if (!token) return;
-    const result = await api.getRecordedSessions(token);
+    if (!signedIn) return;
+    const result = await api.getRecordedSessions();
     setSessions(result.sessions);
   };
 
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
-    if (!token) return;
+    if (!signedIn) return;
 
     setError("");
     const trimmedTitle = title.trim();
@@ -73,7 +73,7 @@ export default function AdminRecordingsPage() {
 
     try {
       setIsUploading(true);
-      await api.createRecordedSession(token, {
+      await api.createRecordedSession({
         title: trimmedTitle,
         module: trimmedModule,
         semester,
@@ -97,8 +97,8 @@ export default function AdminRecordingsPage() {
   };
 
   const onDelete = async (id: string) => {
-    if (!token) return;
-    await api.deleteRecordedSession(token, id);
+    if (!signedIn) return;
+    await api.deleteRecordedSession(id);
     await refreshSessions();
   };
 

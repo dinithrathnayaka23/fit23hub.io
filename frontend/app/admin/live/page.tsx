@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { LiveSession } from "@/lib/types";
 
@@ -10,7 +10,7 @@ const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
 const levelFromSemester = (semester: number) => `Level ${Math.ceil(semester / 2)}`;
 
 export default function AdminLivePage() {
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [title, setTitle] = useState("");
   const [module, setModule] = useState("");
@@ -27,9 +27,9 @@ export default function AdminLivePage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    if (!token) return;
+    if (!signedIn) return;
 
-    api.getLiveSessions(token)
+    api.getLiveSessions()
       .then((result) => {
         setSessions(result.sessions);
         setRecordingDrafts(
@@ -39,11 +39,11 @@ export default function AdminLivePage() {
       .then(() => setLoadError(null))
       .catch((err) => setLoadError(err))
       .finally(() => setLoading(false));
-  }, [token, reloadKey]);
+  }, [signedIn, reloadKey]);
 
   const refreshSessions = async () => {
-    if (!token) return;
-    const result = await api.getLiveSessions(token);
+    if (!signedIn) return;
+    const result = await api.getLiveSessions();
     setSessions(result.sessions);
     setRecordingDrafts(
       Object.fromEntries(result.sessions.map((item) => [item.id, item.recordingUrl || ""])),
@@ -52,10 +52,10 @@ export default function AdminLivePage() {
 
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
-    if (!token) return;
+    if (!signedIn) return;
 
     try {
-      await api.createLiveSession(token, {
+      await api.createLiveSession({
         title,
         module,
         semester,
@@ -79,21 +79,21 @@ export default function AdminLivePage() {
   };
 
   const onToggle = async (session: LiveSession) => {
-    if (!token) return;
-    await api.setLiveStatus(token, session.id, !session.isLive);
+    if (!signedIn) return;
+    await api.setLiveStatus(session.id, !session.isLive);
     await refreshSessions();
   };
 
   const onDelete = async (id: string) => {
-    if (!token) return;
-    await api.deleteLiveSession(token, id);
+    if (!signedIn) return;
+    await api.deleteLiveSession(id);
     await refreshSessions();
   };
 
   const onSaveRecordingUrl = async (id: string) => {
-    if (!token) return;
+    if (!signedIn) return;
     const value = (recordingDrafts[id] || "").trim();
-    await api.updateLiveSession(token, id, { recordingUrl: value });
+    await api.updateLiveSession(id, { recordingUrl: value });
     await refreshSessions();
   };
 

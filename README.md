@@ -313,9 +313,16 @@ needed**, every model id is an environment variable.
 
 | Variable | Default | Window |
 |---|---|---|
-| `AUTH_RATE_LIMIT_MAX` | `50` | 15 minutes |
-| `API_RATE_LIMIT_MAX` | `300` | 15 minutes |
-| `AI_RATE_LIMIT_MAX` | `60` | 15 minutes, on top of the per-student daily quota |
+Signed-in traffic is counted **per student**, not per IP, because a whole batch can share one
+campus NAT address.
+
+| Variable | Default | Counted per |
+|---|---|---|
+| `API_RATE_LIMIT_MAX` | `600` | Signed-in student, per 15 minutes |
+| `AI_RATE_LIMIT_MAX` | `60` | Signed-in student, on top of the daily AI quota |
+| `AUTH_RATE_LIMIT_MAX` | `1000` | IP, signed-out requests only (sign-in, registration, recovery) |
+| `AUTH_ACCOUNT_RATE_LIMIT_MAX` | `10` | Account - stops password guessing and reset-mail spam |
+| `RATE_LIMIT_WINDOW_MS` | `900000` | The window for all of the above |
 
 </details>
 
@@ -493,7 +500,7 @@ flows requires `Authorization: Bearer <jwt>`.
 | Layer | What is enforced |
 |---|---|
 | **Transport** | `helmet` security headers, `hpp` parameter-pollution guard, explicit CORS allowlist |
-| **Rate limiting** | Separate budgets for auth, general API and AI, plus a per-student daily AI quota |
+| **Rate limiting** | Per-student budgets for signed-in traffic, a per-IP ceiling for signed-out traffic, and a per-account limit on sign-in and recovery |
 | **Passwords** | `bcrypt` hashes; 10–72 characters with upper, lower, digit and symbol |
 | **Tokens** | Short-lived JWTs; the user row is re-validated per request behind a 15s cache |
 | **Account state** | Suspended, unverified and archived accounts are refused at login *and* in middleware |

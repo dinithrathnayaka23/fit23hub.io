@@ -1,35 +1,22 @@
 import { prisma } from "../prisma.js";
 import { verifyToken } from "../utils/jwt.js";
+import { SESSION_COOKIE, clearSessionCookies } from "../config/cookies.js";
+import { getCachedUser, invalidateCachedUser, setCachedUser } from "../utils/session-cache.js";
 
-const authUserCache = new Map();
-const AUTH_USER_CACHE_TTL_MS = 15_000;
-
-function getCachedUser(userId) {
-  const cached = authUserCache.get(userId);
-  if (!cached) return null;
-  if (cached.expiresAt <= Date.now()) {
-    authUserCache.delete(userId);
-    return null;
-  }
-  return cached.user;
-}
-
-function setCachedUser(user) {
-  authUserCache.set(user.id, {
-    user,
-    expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS,
-  });
-}
-
-export function invalidateAuthUserCache(userId) {
-  if (!userId) return;
-  authUserCache.delete(userId);
+/**
+ * Shared across instances when REDIS_URL is set, so revoking access reaches
+ * every process at once rather than only the one that handled the request.
+ */
+export async function invalidateAuthUserCache(userId) {
+  await invalidateCachedUser(userId);
 }
 
 export async function requireAuth(req, res, next) {
   try {
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    // The session lives only in an httpOnly cookie. There is deliberately no
+    // Authorization header fallback: accepting one would re-open the path a
+    // script-readable token gave an attacker.
+    const token = req.cookies?.[SESSION_COOKIE];
 
     if (!token) {
       return res.status(401).json({ message: "Authentication required" });
@@ -37,7 +24,7 @@ export async function requireAuth(req, res, next) {
 
     const decoded = verifyToken(token);
     const userId = decoded.sub;
-    const cachedUser = getCachedUser(userId);
+    const cachedUser = await getCachedUser(userId);
     const user = cachedUser || await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -51,6 +38,7 @@ export async function requireAuth(req, res, next) {
         emailVerifiedAt: true,
         isSystemAccount: true,
         deletedAt: true,
+        tokenVersion: true,
         createdAt: true,
       },
     });
@@ -59,14 +47,30 @@ export async function requireAuth(req, res, next) {
       return res.status(401).json({ message: "User is not active" });
     }
 
+    // The token was valid when issued but a revoking event has since bumped
+    // the counter - a password change, a suspension, or "sign out everywhere".
+    // Clearing the cookie here stops the browser from resending a dead token
+    // on every subsequent request.
+    if (decoded.tv !== user.tokenVersion) {
+      clearSessionCookies(res);
+      return res.status(401).json({ message: "Your session is no longer valid. Please sign in again." });
+    }
+
     if (!user.emailVerifiedAt) {
       return res.status(403).json({ message: "Verify your email address to continue.", requiresVerification: true });
     }
 
-    setCachedUser(user);
+    await setCachedUser(user);
     req.user = user;
     return next();
   } catch (error) {
+    // The client is told nothing beyond "invalid", but swallowing the reason
+    // entirely makes a misconfiguration (a wrong JWT_SECRET, an unreachable
+    // database) indistinguishable from an ordinary expired token.
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn("[auth] Rejected a session:", error?.message || error);
+    }
     return res.status(401).json({ message: "Invalid token" });
   }
 }

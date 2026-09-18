@@ -5,7 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronLeft, faChevronRight, faMagnifyingGlass, faUpload } from "@fortawesome/free-solid-svg-icons";
 import MaterialCard from "@/components/cards/MaterialCard";
 import { api } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { Material, MaterialCategory } from "@/lib/types";
 
@@ -53,14 +53,14 @@ export default function MaterialsPage() {
   const [loadError, setLoadError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
 
-  const token = useMemo(() => getToken(), []);
+  const signedIn = useMemo(() => hasSession(), []);
 
   const loadMaterials = useCallback(async (page = 1) => {
-    if (!token) return;
+    if (!signedIn) return;
 
     setLoading(true);
     try {
-      const response = await api.getMaterials(token, {
+      const response = await api.getMaterials({
         q: search || undefined,
         category: categoryFilter || undefined,
         module: moduleFilter || undefined,
@@ -79,7 +79,7 @@ export default function MaterialsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, search, categoryFilter, moduleFilter, semesterFilter, academicYearFilter, sort]);
+  }, [signedIn, search, categoryFilter, moduleFilter, semesterFilter, academicYearFilter, sort]);
 
   useEffect(() => {
     loadMaterials(1);
@@ -96,12 +96,12 @@ export default function MaterialsPage() {
 
   const onUpload = async (event: FormEvent) => {
     event.preventDefault();
-    if (!token) return;
+    if (!signedIn) return;
 
     setError("");
 
     try {
-      await api.uploadMaterial(token, {
+      await api.uploadMaterial({
         title,
         module,
         semester,

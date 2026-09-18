@@ -162,6 +162,9 @@ router.patch("/users/:id", async (req, res) => {
       }
       data.status = "SUSPENDED";
       data.suspensionReason = reason;
+      // Kills any session already open for this account immediately, rather
+      // than waiting up to 15 seconds for the auth cache to expire on its own.
+      data.tokenVersion = { increment: 1 };
     } else if (payload.status === "ACTIVE") {
       data.status = "ACTIVE";
       data.suspensionReason = null;
@@ -173,7 +176,7 @@ router.patch("/users/:id", async (req, res) => {
       select: userSelect,
     });
 
-    invalidateAuthUserCache(user.id);
+    await invalidateAuthUserCache(user.id);
 
     const actorName = req.user.fullName;
 
@@ -259,13 +262,13 @@ router.delete("/users/:id", async (req, res) => {
 
   const user = await prisma.user.update({
     where: { id: target.id },
-    data: { deletedAt: new Date(), deletedById: req.user.id },
+    data: { deletedAt: new Date(), deletedById: req.user.id, tokenVersion: { increment: 1 } },
     select: userSelect,
   });
 
   // The account is blocked from here on, so drop the cached auth row that
   // would otherwise keep an open session alive for up to 15 seconds.
-  invalidateAuthUserCache(user.id);
+  await invalidateAuthUserCache(user.id);
 
   return res.json({ user, message: "Account removed. It can be restored from the archive." });
 });
