@@ -39,3 +39,4 @@ backend/uploads/
 backend/prisma/dev.db
 backend/prisma/*.db
 backend/prisma/*.db-journal
+!deploy/.env.production.example

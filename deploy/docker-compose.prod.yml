@@ -1,0 +1,55 @@
+# Production on a single EC2 server: the API behind Caddy (HTTPS).
+# The database is RDS and uploads go to S3, so this server keeps no state
+# of its own and can be replaced at any time.
+#
+#   cd deploy
+#   cp .env.production.example .env.production   # then fill it in
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      # Caddy is the one proxy in front of the API.
+      - TRUST_PROXY=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - API_DOMAIN=${API_DOMAIN:?Set API_DOMAIN in deploy/.env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  # Holds the issued certificates; keeping it avoids hitting Let's Encrypt
+  # rate limits every time the container is recreated.
+  caddy_data:
+  caddy_config:

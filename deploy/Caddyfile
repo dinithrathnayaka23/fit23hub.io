@@ -1,0 +1,19 @@
+# Caddy obtains and renews the HTTPS certificate for API_DOMAIN by itself.
+# Before you own a domain, API_DOMAIN can be <elastic-ip-with-dashes>.sslip.io,
+# which resolves to the server and can still get a real certificate.
+{$API_DOMAIN} {
+	# Lecture recordings go up to 3 GB.
+	request_body {
+		max_size 3GB
+	}
+
+	reverse_proxy api:4000 {
+		# Event streams (AI answers) are flushed as they arrive.
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
