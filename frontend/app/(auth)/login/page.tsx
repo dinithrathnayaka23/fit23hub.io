@@ -105,7 +105,7 @@ export default function LoginPage() {
         <motion.div variants={item}>
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-xs text-[var(--muted)] transition hover:text-white"
+            className="-my-2 inline-flex items-center gap-2 py-2 text-xs text-[var(--muted)] transition hover:text-white"
           >
             <FontAwesomeIcon icon={faArrowLeft} className="h-3 w-3" />
             Back to home
@@ -154,7 +154,7 @@ export default function LoginPage() {
             </div>
           </motion.label>
           <div className="flex justify-end">
-            <Link className="text-xs text-[var(--accent)] hover:underline" href="/forgot-password">
+            <Link className="-my-2 inline-block py-2 text-xs text-[var(--accent)] hover:underline" href="/forgot-password">
               Forgot password?
             </Link>
           </div>
@@ -201,7 +201,7 @@ export default function LoginPage() {
           </motion.button>
         </motion.form>
         <motion.p variants={item} className="mt-4 text-sm text-[var(--muted)]">
-          New student? <Link className="text-[var(--accent)]" href="/register">Create account</Link>
+          New student? <Link className="-my-2 inline-block py-2 text-[var(--accent)]" href="/register">Create account</Link>
         </motion.p>
       </motion.div>
       <SuspendedModal

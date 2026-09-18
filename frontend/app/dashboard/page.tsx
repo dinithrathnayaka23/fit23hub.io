@@ -142,7 +142,7 @@ export default function DashboardPage() {
         </section>
       </FadeIn>
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
           <FadeIn delay={0.05}>
             <section className="glass-card overflow-hidden">
@@ -151,7 +151,7 @@ export default function DashboardPage() {
                   <FontAwesomeIcon icon={faCircleNodes} className="h-4 w-4 text-[var(--accent)]" />
                   <h2 className="text-base font-semibold text-white">Next Kuppi session</h2>
                 </div>
-                <Link href="/dashboard/live" className="text-xs font-medium text-[var(--accent)] transition hover:text-white">
+                <Link href="/dashboard/live" className="-my-1.5 -mr-2 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--accent)] transition hover:text-white">
                   View all
                 </Link>
               </div>
@@ -200,7 +200,7 @@ export default function DashboardPage() {
             <section>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-base font-semibold text-white">Latest recordings</h2>
-                <Link href="/dashboard/recordings" className="text-xs font-medium text-[var(--accent)] transition hover:text-white">
+                <Link href="/dashboard/recordings" className="-my-1.5 -mr-2 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--accent)] transition hover:text-white">
                   View all
                 </Link>
               </div>
@@ -209,7 +209,7 @@ export default function DashboardPage() {
                   No recorded sessions yet.
                 </div>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {recordings.map((recording) => (
                     <VideoCard
                       key={recording.id}
@@ -233,7 +233,7 @@ export default function DashboardPage() {
                   <FontAwesomeIcon icon={faClock} className="h-4 w-4 text-[var(--accent)]" />
                   <h2 className="text-base font-semibold text-white">Coming up</h2>
                 </div>
-                <Link href="/dashboard/announcements" className="text-xs font-medium text-[var(--accent)] transition hover:text-white">
+                <Link href="/dashboard/announcements" className="-my-1.5 -mr-2 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--accent)] transition hover:text-white">
                   Noticeboard
                 </Link>
               </div>
