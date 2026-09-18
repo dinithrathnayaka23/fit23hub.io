@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faBars,
   faChevronRight,
   faShieldHalved,
   faUserCircle,
@@ -20,30 +21,20 @@ type TopBarProps = {
   links: TopBarLink[];
   admin: boolean;
   user: User | null;
+  rootHref: string;
+  currentLabel: string;
+  currentIcon?: IconDefinition;
+  onMenuClick: () => void;
 };
 
-/** Turns "/admin/users" into "Users" when the path is not one of the nav links. */
-function prettifySegment(segment: string) {
-  return segment
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
-export default function TopBar({ links, admin, user }: TopBarProps) {
+export default function TopBar({ admin, user, rootHref, currentLabel, currentIcon, onMenuClick }: TopBarProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const rootLabel = admin ? "Admin" : "Dashboard";
   const profileHref = admin ? "/admin/profile" : "/dashboard/profile";
-  const rootHref = admin ? "/admin" : "/dashboard";
-
-  const matched = links.find((link) => link.href === pathname);
-  const lastSegment = pathname.split("/").filter(Boolean).slice(-1)[0] || "";
   const isRoot = pathname === rootHref;
-  const currentLabel = matched?.label ?? (isRoot ? "Overview" : prettifySegment(lastSegment));
-  const CurrentIcon = matched?.icon;
 
   // Dismiss on outside click or Escape. Clicking a sidebar link counts as an
   // outside mousedown, so navigation closes the menu too.
@@ -70,27 +61,42 @@ export default function TopBar({ links, admin, user }: TopBarProps) {
   const imageSrc = user?.profileImageUrl ? resolveAssetUrl(user.profileImageUrl) : "/avatar-student.svg";
 
   return (
-    <header className="glass-card relative z-30 flex shrink-0 items-center justify-between gap-3 px-4 py-2.5">
-      {/* Left: where you are */}
+    <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[rgba(9,16,29,0.78)] backdrop-blur-xl">
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+      {/* Left: menu (mobile) and where you are */}
+      <div className="flex min-w-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          aria-label="Open menu"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--muted)] transition hover:bg-[rgba(56,189,248,0.08)] hover:text-white lg:hidden"
+        >
+          <FontAwesomeIcon icon={faBars} className="h-4 w-4" />
+        </button>
       <nav aria-label="Breadcrumb" className="min-w-0">
         <ol className="flex min-w-0 items-center gap-2 text-sm">
-          <li className="shrink-0">
-            <Link
-              href={rootHref}
-              className="text-[var(--muted)] transition hover:text-white"
-            >
-              {rootLabel}
-            </Link>
-          </li>
-          <li aria-hidden className="shrink-0 text-[var(--muted)]">
-            <FontAwesomeIcon icon={faChevronRight} className="h-2.5 w-2.5" />
-          </li>
+          {!isRoot && (
+            <>
+              <li className="hidden shrink-0 sm:block">
+                <Link
+                  href={rootHref}
+                  className="text-[var(--muted)] transition hover:text-white"
+                >
+                  {rootLabel}
+                </Link>
+              </li>
+              <li aria-hidden className="hidden shrink-0 text-[var(--muted)] sm:block">
+                <FontAwesomeIcon icon={faChevronRight} className="h-2.5 w-2.5" />
+              </li>
+            </>
+          )}
           <li className="flex min-w-0 items-center gap-2 font-medium text-white" aria-current="page">
-            {CurrentIcon && <FontAwesomeIcon icon={CurrentIcon} className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />}
+            {currentIcon && <FontAwesomeIcon icon={currentIcon} className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />}
             <span className="truncate">{currentLabel}</span>
           </li>
         </ol>
       </nav>
+      </div>
 
       {/* Right: notifications + account */}
       <div className="flex shrink-0 items-center gap-2">
@@ -169,6 +175,7 @@ export default function TopBar({ links, admin, user }: TopBarProps) {
             </div>
           )}
         </div>
+      </div>
       </div>
     </header>
   );
