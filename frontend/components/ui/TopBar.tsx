@@ -62,7 +62,7 @@ export default function TopBar({ admin, user, rootHref, currentLabel, currentIco
 
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[rgba(9,16,29,0.78)] backdrop-blur-xl">
-      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-16 w-full max-w-[96rem] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
       {/* Left: menu (mobile) and where you are */}
       <div className="flex min-w-0 items-center gap-3">
         <button

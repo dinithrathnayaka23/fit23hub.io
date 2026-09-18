@@ -315,7 +315,7 @@ export default function AppShell({ children, title, subtitle, admin = false }: A
           onMenuClick={() => setMenuOpen(true)}
         />
 
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className="mx-auto w-full max-w-[96rem] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {!online && (
             <div
               role="status"
