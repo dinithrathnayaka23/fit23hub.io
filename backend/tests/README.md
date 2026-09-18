@@ -11,10 +11,9 @@ than mocking them apart.
 #    clean up their own rows, prefixed test.* / probe.*).
 docker start fit23hub-pg
 
-# 2. Start the API with the rate limits raised, or the suite trips them:
-#    the limiter allows 50 auth requests per 15 minutes per IP, and every test
-#    signs in at least once.
-AUTH_RATE_LIMIT_MAX=100000 API_RATE_LIMIT_MAX=100000 npm run dev
+# 2. Start the API with its normal settings - the suite runs within the
+#    default rate limits, which is itself part of what it checks.
+npm run dev
 
 # 3. Run the tests
 npm test
@@ -39,6 +38,7 @@ TEST_REDIS_URL=redis://localhost:6379 npm test
 | `permissions.test.mjs` | Role boundaries, the immutable super admin, instant revocation on suspension and removal |
 | `content.test.mjs` | Soft delete and restore, case-insensitive search, announcements, profile-photo validation |
 | `session-cache.test.mjs` | Cross-instance cache sharing and invalidation, TTL, in-memory fallback |
+| `rate-limit.test.mjs` | Per-student budgets behind one shared IP, forged cookies, per-account brute-force limits |
 
 ## What is NOT covered
 
