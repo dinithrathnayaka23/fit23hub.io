@@ -3,6 +3,8 @@ import fsp from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { uploadsDir } from "./paths.js";
 
 const storageDriver = String(process.env.STORAGE_DRIVER || "local").toLowerCase();
@@ -10,7 +12,37 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseBucket = process.env.SUPABASE_STORAGE_BUCKET || "fit23hub-assets";
 
+// S3: credentials come from the default AWS chain - on EC2 that is the
+// instance's IAM role, so no access keys need to live in .env.
+// S3_ENDPOINT is only for S3-compatible stores (MinIO in local testing).
+const s3Bucket = process.env.S3_BUCKET;
+const s3Region = process.env.AWS_REGION || process.env.S3_REGION || "ap-south-1";
+const s3Endpoint = process.env.S3_ENDPOINT?.replace(/\/$/, "");
+// Where stored objects are read from: a CloudFront domain if one is set up,
+// otherwise the bucket itself.
+const s3PublicBase = (
+  process.env.S3_PUBLIC_URL
+  || (s3Endpoint ? `${s3Endpoint}/${s3Bucket}` : `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`)
+).replace(/\/$/, "");
+// Uploaded names are random, so an object never changes once written.
+const S3_CACHE_CONTROL = "public, max-age=604800, immutable";
+
 let supabaseAdminClient;
+let s3Client;
+
+function ensureS3Client() {
+  if (s3Client) return s3Client;
+  if (!s3Bucket) {
+    throw new Error("S3 storage is not configured. Set S3_BUCKET and AWS_REGION.");
+  }
+  s3Client = new S3Client({
+    region: s3Region,
+    ...(s3Endpoint ? { endpoint: s3Endpoint, forcePathStyle: true } : {}),
+  });
+  return s3Client;
+}
+
+const s3PublicUrl = (key) => `${s3PublicBase}/${key}`;
 
 function ensureSupabaseAdminClient() {
   if (supabaseAdminClient) return supabaseAdminClient;
@@ -37,7 +69,7 @@ function buildStorageObjectPath(folder, originalName) {
 }
 
 export function shouldUseRemoteStorage() {
-  return storageDriver === "supabase";
+  return storageDriver === "supabase" || storageDriver === "s3";
 }
 
 export async function deleteLocalTempFile(filePath) {
@@ -52,9 +84,28 @@ export async function storeUploadedFile({ file, folder }) {
     return `/uploads/${path.basename(file.path)}`;
   }
 
-  const client = ensureSupabaseAdminClient();
   const objectPath = buildStorageObjectPath(folder, file.originalname);
   const contentType = file.mimetype || "application/octet-stream";
+
+  if (storageDriver === "s3") {
+    // Multipart and streamed, so a 3 GB recording never sits in memory.
+    await new Upload({
+      client: ensureS3Client(),
+      params: {
+        Bucket: s3Bucket,
+        Key: objectPath,
+        Body: fs.createReadStream(file.path),
+        ContentType: contentType,
+        CacheControl: S3_CACHE_CONTROL,
+      },
+      queueSize: 4,
+      partSize: 16 * 1024 * 1024,
+    }).done();
+    await deleteLocalTempFile(file.path);
+    return s3PublicUrl(objectPath);
+  }
+
+  const client = ensureSupabaseAdminClient();
   const stream = fs.createReadStream(file.path);
 
   const { error } = await client.storage.from(supabaseBucket).upload(objectPath, stream, {
@@ -81,8 +132,20 @@ export async function storeBuffer({ buffer, folder, extension, contentType }) {
     return `/uploads/${name}`;
   }
 
-  const client = ensureSupabaseAdminClient();
   const objectPath = `${folder}/${name}`;
+
+  if (storageDriver === "s3") {
+    await ensureS3Client().send(new PutObjectCommand({
+      Bucket: s3Bucket,
+      Key: objectPath,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: S3_CACHE_CONTROL,
+    }));
+    return s3PublicUrl(objectPath);
+  }
+
+  const client = ensureSupabaseAdminClient();
   const { error } = await client.storage.from(supabaseBucket).upload(objectPath, buffer, {
     contentType,
     upsert: false,
@@ -112,7 +175,16 @@ export async function deleteStoredFile(url) {
       return;
     }
 
-    if (!shouldUseRemoteStorage() || !supabaseUrl) return;
+    if (storageDriver === "s3") {
+      const prefix = `${s3PublicBase}/`;
+      if (!url.startsWith(prefix)) return;
+      const key = decodeURIComponent(url.slice(prefix.length));
+      if (!key || key.includes("..")) return;
+      await ensureS3Client().send(new DeleteObjectCommand({ Bucket: s3Bucket, Key: key }));
+      return;
+    }
+
+    if (storageDriver !== "supabase" || !supabaseUrl) return;
 
     const marker = `/storage/v1/object/public/${supabaseBucket}/`;
     const index = url.indexOf(marker);
