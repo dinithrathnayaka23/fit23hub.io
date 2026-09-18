@@ -189,7 +189,7 @@ function Sidebar({ groups, pathname, rootHref, admin, user, onNavigate, onClose 
       </nav>
 
       <div className="shrink-0 space-y-3 border-t border-[var(--border)] p-4">
-        <div className="flex items-center gap-3 rounded-lg bg-[rgba(56,189,248,0.05)] p-2.5">
+        <div className="flex items-center gap-2.5 rounded-lg bg-[rgba(56,189,248,0.05)] p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={avatar}
@@ -199,11 +199,13 @@ function Sidebar({ groups, pathname, rootHref, admin, user, onNavigate, onClose 
             onError={(event) => {
               event.currentTarget.src = "/avatar-student.svg";
             }}
-            className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-[var(--border)]"
+            className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-[var(--border)]"
           />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-white">{user?.fullName || "Signed in"}</p>
-            <p className="truncate text-[11px] text-[var(--muted)]">{roleLabel(user, admin)}</p>
+            <p className="line-clamp-2 break-words text-[13px] font-medium leading-snug text-white" title={user?.fullName}>
+              {user?.fullName || "Signed in"}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-tight text-[var(--muted)]">{roleLabel(user, admin)}</p>
           </div>
         </div>
         <button
