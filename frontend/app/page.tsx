@@ -11,6 +11,7 @@ import NetworkBackground from "@/components/animations/NetworkBackground";
 import EducationHeroVisual from "@/components/animations/EducationHeroVisual";
 import GalleryCard from "@/components/cards/GalleryCard";
 import LandingFeatureCard from "@/components/cards/LandingFeatureCard";
+import BrandMark from "@/components/ui/BrandMark";
 
 const features = [
   {
@@ -65,9 +66,12 @@ export default function Home() {
         <header className="glass-card grid-surface p-6 md:p-8">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
             <FadeIn className="max-w-2xl">
-              <p className="inline-flex items-center rounded-full border border-[rgba(56,189,248,0.45)] bg-[linear-gradient(120deg,rgba(56,189,248,0.2),rgba(30,58,138,0.28))] px-4 py-1 text-sm font-semibold uppercase tracking-[0.22em] text-[#c8eeff] shadow-[0_0_30px_rgba(56,189,248,0.3)]">
-                FIT23HUB
-              </p>
+              <div className="flex items-center gap-4">
+                <BrandMark size={72} priority className="h-14 w-14 sm:h-[72px] sm:w-[72px]" />
+                <p className="inline-flex items-center rounded-full border border-[rgba(56,189,248,0.45)] bg-[linear-gradient(120deg,rgba(56,189,248,0.2),rgba(30,58,138,0.28))] px-4 py-1 text-sm font-semibold uppercase tracking-[0.22em] text-[#c8eeff] shadow-[0_0_30px_rgba(56,189,248,0.3)]">
+                  FIT23HUB
+                </p>
+              </div>
               <h1 className="mt-4 text-4xl font-bold leading-tight md:text-5xl">
                 <span className="bg-gradient-to-r from-[#8de6ff] via-[#38bdf8] to-[#6f9dff] bg-clip-text text-transparent">
                   FIT23HUB
@@ -130,6 +134,7 @@ export default function Home() {
         </section>
 
         <footer className="pb-2 pt-4 text-center text-sm text-[var(--muted)]">
+          <BrandMark size={44} className="mx-auto mb-2 opacity-90" />
           <p>Built with ❤️ for Batch23.</p>
           <p className="mt-1">
             <Link className="text-[var(--accent)] hover:underline" href="/privacy">
