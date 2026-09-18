@@ -28,6 +28,7 @@ beforeAll(async () => {
   const ok = (_req, res) => res.json({ ok: true });
   app.get("/api/materials", apiRateLimiter, ok);
   app.post("/api/ai/query", aiRateLimiter, ok);
+  app.get("/api/ai/projects", aiRateLimiter, ok);
   // Mounted exactly as server.js mounts it, so the limiter sees the same
   // router-relative paths ("/login") it sees in production.
   const auth = express.Router();
@@ -97,6 +98,24 @@ describe("signed-in students sharing one IP each get their own budget", () => {
     expect(results.at(-1)).toBe(429);
     // Using up the AI budget leaves ordinary browsing untouched.
     expect((await get("/api/materials", cookie)).status).toBe(200);
+  });
+});
+
+describe("the AI limit only counts requests that call a model", () => {
+  it("never limits a student for repeatedly opening the AI page", async () => {
+    const cookie = sessionFor();
+    const statuses = [];
+    // More reads than the whole AI budget allows, but still inside the
+    // ordinary read budget - listing projects must not touch the AI limit.
+    const reads = config.aiPerUser + 1;
+    expect(reads).toBeLessThan(config.apiPerUser);
+    for (let r = 0; r < reads; r += 1) {
+      statuses.push((await get("/api/ai/projects", cookie)).status);
+    }
+    expect(statuses.every((code) => code === 200)).toBe(true);
+
+    // The generation budget is still fully available afterwards.
+    expect((await post("/api/ai/query", {}, cookie)).status).toBe(200);
   });
 });
 

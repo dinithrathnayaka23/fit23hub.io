@@ -19,25 +19,25 @@ export default function MaterialCard({ item }: MaterialCardProps) {
   const downloadUrl = item.externalUrl || resolveAssetUrl(item.fileUrl);
 
   return (
-    <article className="glass-card p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <article className="glass-card p-4 sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.12em] text-[var(--accent)]">{categoryLabels[item.category]}</p>
-          <h3 className="mt-2 text-lg font-semibold">{item.title}</h3>
+          <h3 className="mt-2 break-words text-base font-semibold text-white sm:text-lg">{item.title}</h3>
           <p className="mt-1 text-sm text-[var(--muted)]">
             {item.module} | Semester {item.semester} | {item.academicYear}
           </p>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Uploaded by {item.uploader.fullName} ({item.uploader.indexNo})
           </p>
-          {item.description && <p className="mt-2 text-sm text-[var(--muted)]">{item.description}</p>}
+          {item.description && <p className="mt-2 break-words text-sm text-[var(--muted)]">{item.description}</p>}
         </div>
         {downloadUrl && (
           <a
             href={downloadUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm hover:bg-[#2a4fb5]"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm hover:bg-[#2a4fb5]"
           >
             <FontAwesomeIcon icon={faDownload} className="h-4 w-4" />
             Download

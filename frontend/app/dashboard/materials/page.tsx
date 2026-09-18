@@ -147,7 +147,7 @@ export default function MaterialsPage() {
           <button
             type="button"
             onClick={() => onSemesterFilterChange(0)}
-            className={`rounded-full border px-3 py-1 text-xs ${semesterFilter === 0 ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.2)] text-[#c8eeff]" : "border-[var(--border)] text-[var(--muted)]"}`}
+            className={`rounded-full border px-3 py-1.5 text-xs ${semesterFilter === 0 ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.2)] text-[#c8eeff]" : "border-[var(--border)] text-[var(--muted)]"}`}
           >
             All Semesters
           </button>
@@ -156,14 +156,14 @@ export default function MaterialsPage() {
               key={item}
               type="button"
               onClick={() => onSemesterFilterChange(item)}
-              className={`rounded-full border px-3 py-1 text-xs ${semesterFilter === item ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.2)] text-[#c8eeff]" : "border-[var(--border)] text-[var(--muted)]"}`}
+              className={`rounded-full border px-3 py-1.5 text-xs ${semesterFilter === item ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.2)] text-[#c8eeff]" : "border-[var(--border)] text-[var(--muted)]"}`}
             >
               Semester {item}
             </button>
           ))}
         </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-6">
           <div className="relative lg:col-span-2">
             <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--muted)]" />
             <input
@@ -198,7 +198,7 @@ export default function MaterialsPage() {
 
       <details className="glass-card p-4 md:p-5">
         <summary className="cursor-pointer text-sm font-semibold text-[#d5ecff]">Share New Material</summary>
-        <form onSubmit={onUpload} className="mt-3 grid gap-3 md:grid-cols-2">
+        <form onSubmit={onUpload} className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Material title" value={title} onChange={(e) => setTitle(e.target.value)} required />
           <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Module (e.g. IN2130)" value={module} onChange={(e) => setModule(e.target.value)} required />
           <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" value={semester} onChange={(e) => setSemester(Number(e.target.value))}>
@@ -219,7 +219,7 @@ export default function MaterialsPage() {
       </details>
 
       <div className="flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted)]">
-        <p>{pagination.total} materials found</p>
+        <p>{pagination.total} {pagination.total === 1 ? "material" : "materials"} found</p>
         <p>Page {pagination.page} of {pagination.totalPages}</p>
       </div>
 

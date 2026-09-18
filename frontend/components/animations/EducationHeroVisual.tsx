@@ -38,7 +38,7 @@ export default function EducationHeroVisual() {
           </div>
         </div>
 
-        <div className="relative z-10 space-y-2 px-4 py-4 font-mono text-[12px] md:text-[13px]">
+        <div className="relative z-10 space-y-2 px-4 pb-14 pt-4 font-mono text-[11px] sm:text-[12px] md:text-[13px]">
           <div className="text-[#5f7798]">
             <span className="mr-3">1</span>
             <span className="text-[#66c4ff]">type</span> <span className="text-[#d8ecff]">Batch</span> ={" "}

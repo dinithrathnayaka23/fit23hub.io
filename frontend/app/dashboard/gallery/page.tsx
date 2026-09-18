@@ -31,7 +31,7 @@ export default function GalleryPage() {
           A focused gallery of the official FIT23 semester batch photographs.
         </p>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {gallery.map((entry) => (
           <GalleryCard key={entry.title} {...entry} />
         ))}

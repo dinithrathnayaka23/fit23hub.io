@@ -139,6 +139,96 @@ export default function AdminUsersPage() {
     }
   };
 
+  // Shared by the desktop table and the mobile cards, so both offer exactly the
+  // same controls under the same permission rules.
+  const actionButton = "rounded-lg border px-3 py-1.5 text-xs transition";
+
+  const renderStatus = (user: User) => (
+    <>
+      <span className={user.status === "SUSPENDED" ? "text-red-300" : "text-emerald-300"}>{user.status}</span>
+      {user.status === "SUSPENDED" && user.suspensionReason && (
+        <p className="mt-1 max-w-xs break-words text-xs text-[var(--muted)]">
+          Reason: {user.suspensionReason}
+        </p>
+      )}
+    </>
+  );
+
+  const renderActions = (user: User) => {
+    const isSelf = user.id === currentUser?.id;
+    const canManage = user.role !== "SUPER_ADMIN" && (isSuperAdmin || user.role !== "ADMIN");
+
+    if (user.role === "SUPER_ADMIN") {
+      return <span className="text-xs text-[var(--muted)]">Platform owner &mdash; locked</span>;
+    }
+    if (!canManage) {
+      return <span className="text-xs text-[var(--muted)]">Managed by the super admin</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        {isSuperAdmin && (
+          user.role === "ADMIN" ? (
+            <button
+              className={`${actionButton} border-[rgba(250,204,21,0.4)] text-amber-200 hover:bg-[rgba(250,204,21,0.12)]`}
+              type="button"
+              onClick={() => updateUser(user.id, { role: "STUDENT" })}
+            >
+              Revoke admin
+            </button>
+          ) : (
+            <button
+              className={`${actionButton} border-[rgba(56,189,248,0.4)] text-[#c8eeff] hover:bg-[rgba(56,189,248,0.12)]`}
+              type="button"
+              onClick={() => updateUser(user.id, { role: "ADMIN" })}
+            >
+              Make admin
+            </button>
+          )
+        )}
+        {user.status === "ACTIVE" ? (
+          <button
+            className={`${actionButton} border-red-400/40 text-red-300 hover:bg-red-500/10 hover:text-red-200`}
+            type="button"
+            onClick={() => openSuspendModal(user)}
+          >
+            Suspend
+          </button>
+        ) : (
+          <button
+            className={`${actionButton} border-[var(--border)] text-[var(--muted)] hover:text-white`}
+            type="button"
+            onClick={() => updateUser(user.id, { status: "ACTIVE" })}
+          >
+            Activate
+          </button>
+        )}
+        {!isSelf && (
+          <button
+            className={`${actionButton} border-[var(--border)] text-[var(--muted)] hover:border-red-400/40 hover:text-red-200`}
+            type="button"
+            onClick={() => setRemoveTarget(user)}
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const renderRestore = (user: User) =>
+    !isSuperAdmin && user.role === "ADMIN" ? (
+      <span className="text-xs text-[var(--muted)]">Managed by the super admin</span>
+    ) : (
+      <button
+        className={`${actionButton} border-[rgba(52,211,153,0.4)] text-emerald-200 hover:bg-[rgba(52,211,153,0.12)]`}
+        type="button"
+        onClick={() => onRestore(user)}
+      >
+        Restore
+      </button>
+    );
+
   useEscapeKey(() => setSuspendTarget(null), Boolean(suspendTarget) && !saving);
   useEscapeKey(() => setRemoveTarget(null), Boolean(removeTarget) && !saving);
 
@@ -174,139 +264,98 @@ export default function AdminUsersPage() {
       ) : loading && users.length === 0 && removed.length === 0 ? (
         <LoadingState label="Loading accounts..." />
       ) : (
-      <div className="glass-card overflow-x-auto">
+      <div className="glass-card overflow-hidden">
         {view === "active" ? (
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-[var(--border)] text-[var(--muted)]">
-              <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Index</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => {
-                const isSelf = user.id === currentUser?.id;
-                const canManage = user.role !== "SUPER_ADMIN" && (isSuperAdmin || user.role !== "ADMIN");
+          <>
+            {/* Phones and small tablets: one card per account, nothing hidden off to the side. */}
+            <ul className="divide-y divide-[var(--border)] md:hidden">
+              {users.map((user) => (
+                <li key={user.id} className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words font-medium text-white">{user.fullName}</p>
+                      <p className="mt-0.5 text-xs text-[var(--muted)]">{user.indexNo}</p>
+                    </div>
+                    <RoleBadge role={user.role} />
+                  </div>
+                  <div className="text-sm">{renderStatus(user)}</div>
+                  {renderActions(user)}
+                </li>
+              ))}
+            </ul>
 
-                return (
-                  <tr key={user.id} className="border-b border-[var(--border)]/60 align-top">
-                    <td className="px-4 py-3">{user.fullName}</td>
-                    <td className="px-4 py-3 text-[var(--muted)]">{user.indexNo}</td>
-                    <td className="px-4 py-3"><RoleBadge role={user.role} /></td>
-                    <td className="px-4 py-3">
-                      <span className={user.status === "SUSPENDED" ? "text-red-300" : "text-emerald-300"}>{user.status}</span>
-                      {user.status === "SUSPENDED" && user.suspensionReason && (
-                        <p className="mt-1 max-w-xs text-xs text-[var(--muted)]">
-                          Reason: {user.suspensionReason}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {user.role === "SUPER_ADMIN" ? (
-                        <span className="text-xs text-[var(--muted)]">Platform owner &mdash; locked</span>
-                      ) : !canManage ? (
-                        <span className="text-xs text-[var(--muted)]">Managed by the super admin</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {isSuperAdmin && (
-                            user.role === "ADMIN" ? (
-                              <button
-                                className="rounded-lg border border-[rgba(250,204,21,0.4)] px-2 py-1 text-xs text-amber-200 transition hover:bg-[rgba(250,204,21,0.12)]"
-                                type="button"
-                                onClick={() => updateUser(user.id, { role: "STUDENT" })}
-                              >
-                                Revoke admin
-                              </button>
-                            ) : (
-                              <button
-                                className="rounded-lg border border-[rgba(56,189,248,0.4)] px-2 py-1 text-xs text-[#c8eeff] transition hover:bg-[rgba(56,189,248,0.12)]"
-                                type="button"
-                                onClick={() => updateUser(user.id, { role: "ADMIN" })}
-                              >
-                                Make admin
-                              </button>
-                            )
-                          )}
-                          {user.status === "ACTIVE" ? (
-                            <button
-                              className="rounded-lg border border-red-400/40 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-200"
-                              type="button"
-                              onClick={() => openSuspendModal(user)}
-                            >
-                              Suspend
-                            </button>
-                          ) : (
-                            <button
-                              className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] hover:text-white"
-                              type="button"
-                              onClick={() => updateUser(user.id, { status: "ACTIVE" })}
-                            >
-                              Activate
-                            </button>
-                          )}
-                          {!isSelf && (
-                            <button
-                              className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] transition hover:border-red-400/40 hover:text-red-200"
-                              type="button"
-                              onClick={() => setRemoveTarget(user)}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="border-b border-[var(--border)] text-[var(--muted)]">
+                  <tr>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Index</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Actions</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b border-[var(--border)]/60 align-top">
+                      <td className="px-4 py-3">{user.fullName}</td>
+                      <td className="px-4 py-3 text-[var(--muted)]">{user.indexNo}</td>
+                      <td className="px-4 py-3"><RoleBadge role={user.role} /></td>
+                      <td className="px-4 py-3">{renderStatus(user)}</td>
+                      <td className="px-4 py-3">{renderActions(user)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : removed.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-[var(--muted)]">
+            No removed accounts. Removing an account here keeps all of its data and can be undone.
+          </p>
         ) : (
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-[var(--border)] text-[var(--muted)]">
-              <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Index</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Removed</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {removed.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-sm text-[var(--muted)]">
-                    No removed accounts. Removing an account here keeps all of its data and can be undone.
-                  </td>
-                </tr>
-              ) : (
-                removed.map((user) => (
-                  <tr key={user.id} className="border-b border-[var(--border)]/60 align-top">
-                    <td className="px-4 py-3">{user.fullName}</td>
-                    <td className="px-4 py-3 text-[var(--muted)]">{user.indexNo}</td>
-                    <td className="px-4 py-3"><RoleBadge role={user.role} /></td>
-                    <td className="px-4 py-3 text-xs text-[var(--muted)]">{formatRemovedAt(user.deletedAt)}</td>
-                    <td className="px-4 py-3">
-                      {!isSuperAdmin && user.role === "ADMIN" ? (
-                        <span className="text-xs text-[var(--muted)]">Managed by the super admin</span>
-                      ) : (
-                        <button
-                          className="rounded-lg border border-[rgba(52,211,153,0.4)] px-2 py-1 text-xs text-emerald-200 transition hover:bg-[rgba(52,211,153,0.12)]"
-                          type="button"
-                          onClick={() => onRestore(user)}
-                        >
-                          Restore
-                        </button>
-                      )}
-                    </td>
+          <>
+            <ul className="divide-y divide-[var(--border)] md:hidden">
+              {removed.map((user) => (
+                <li key={user.id} className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words font-medium text-white">{user.fullName}</p>
+                      <p className="mt-0.5 text-xs text-[var(--muted)]">{user.indexNo}</p>
+                    </div>
+                    <RoleBadge role={user.role} />
+                  </div>
+                  <p className="text-xs text-[var(--muted)]">Removed {formatRemovedAt(user.deletedAt)}</p>
+                  {renderRestore(user)}
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="border-b border-[var(--border)] text-[var(--muted)]">
+                  <tr>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Index</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Removed</th>
+                    <th className="px-4 py-3">Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {removed.map((user) => (
+                    <tr key={user.id} className="border-b border-[var(--border)]/60 align-top">
+                      <td className="px-4 py-3">{user.fullName}</td>
+                      <td className="px-4 py-3 text-[var(--muted)]">{user.indexNo}</td>
+                      <td className="px-4 py-3"><RoleBadge role={user.role} /></td>
+                      <td className="px-4 py-3 text-xs text-[var(--muted)]">{formatRemovedAt(user.deletedAt)}</td>
+                      <td className="px-4 py-3">{renderRestore(user)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
       )}

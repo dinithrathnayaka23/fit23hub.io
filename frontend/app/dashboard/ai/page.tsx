@@ -477,13 +477,7 @@ export default function AiPage() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-5xl space-y-4">
-      <div className="glass-card border border-[rgba(56,189,248,0.22)] bg-[linear-gradient(120deg,rgba(10,26,46,0.92),rgba(17,46,86,0.6))] p-5">
-        <p className="text-xs uppercase tracking-[0.12em] text-[#99d9ff]">AI Learning</p>
-        <h1 className="mt-1 text-2xl font-semibold text-[#ebf8ff]">Project-Based AI Learning</h1>
-        <p className="mt-1 text-sm text-[#bfdef2]">Create a project, add study materials, then ask questions and generate quizzes/flashcards from that project.</p>
-      </div>
-
+    <section className="space-y-4">
       <div className="glass-card space-y-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -531,7 +525,7 @@ export default function AiPage() {
 
         <div className="flex flex-wrap gap-2">
           {quickPrompts.map((item) => (
-            <button key={item} type="button" onClick={() => setPrompt(item)} className="rounded-full border border-[var(--border)] bg-[rgba(11,18,32,0.45)] px-3 py-1 text-xs text-[var(--muted)] hover:text-white">
+            <button key={item} type="button" onClick={() => setPrompt(item)} className="rounded-full border border-[var(--border)] bg-[rgba(11,18,32,0.45)] px-3 py-1.5 text-left text-xs text-[var(--muted)] hover:text-white">
               {item}
             </button>
           ))}
@@ -634,7 +628,7 @@ export default function AiPage() {
           Manage Sources
         </summary>
 
-        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <form className="space-y-2 rounded-xl border border-[var(--border)] bg-[rgba(11,18,32,0.35)] p-3" onSubmit={onUploadSource}>
             <input className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.7)] px-3 py-2 text-sm" placeholder="Title" value={sourceTitle} onChange={(e) => setSourceTitle(e.target.value)} required />
             <input className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.7)] px-3 py-2 text-sm" placeholder="Module" value={sourceModule} onChange={(e) => setSourceModule(e.target.value)} required />

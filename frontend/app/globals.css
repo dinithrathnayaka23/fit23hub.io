@@ -185,6 +185,26 @@ h4 {
   animation: hero-caret 0.95s steps(1, end) infinite;
 }
 
+/*
+ * A file input's intrinsic width is set by the browser's "Choose file" button
+ * plus the file name, and ignores the grid it sits in - on a 320px phone that
+ * pushed every upload field past the screen edge.
+ */
+input[type="file"] {
+  max-width: 100%;
+  min-width: 0;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--text);
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+
 .custom-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(56, 189, 248, 0.42) rgba(11, 18, 32, 0.36);

@@ -192,7 +192,7 @@ export default function PrivacyPolicyPage() {
           </Section>
 
           <div className="mt-8 border-t border-[var(--border)] pt-5">
-            <Link className="text-sm text-[var(--accent)] hover:underline" href="/">
+            <Link className="-my-2 inline-block py-2 text-sm text-[var(--accent)] hover:underline" href="/">
               &larr; Back to FIT23Hub
             </Link>
           </div>

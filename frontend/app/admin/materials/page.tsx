@@ -126,7 +126,7 @@ export default function AdminMaterialsPage() {
 
   return (
     <section className="space-y-4">
-      <form onSubmit={onCreate} className="glass-card grid gap-3 p-4 md:grid-cols-2 md:p-5">
+      <form onSubmit={onCreate} className="glass-card grid grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-5">
         <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Material title" value={title} onChange={(e) => setTitle(e.target.value)} required />
         <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Module (e.g. IN2130)" value={module} onChange={(e) => setModule(e.target.value)} required />
         <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" value={semester} onChange={(e) => setSemester(Number(e.target.value))}>

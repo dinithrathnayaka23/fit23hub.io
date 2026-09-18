@@ -10,6 +10,7 @@ import { api, ApiError } from "@/lib/api";
 import { setStoredUser } from "@/lib/auth";
 import SuspendedModal from "@/components/SuspendedModal";
 import { isAdminRole } from "@/lib/types";
+import BrandMark from "@/components/ui/BrandMark";
 
 const container = {
   hidden: { opacity: 0, y: 20 },
@@ -105,13 +106,16 @@ export default function LoginPage() {
         <motion.div variants={item}>
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-xs text-[var(--muted)] transition hover:text-white"
+            className="-my-2 inline-flex items-center gap-2 py-2 text-xs text-[var(--muted)] transition hover:text-white"
           >
             <FontAwesomeIcon icon={faArrowLeft} className="h-3 w-3" />
             Back to home
           </Link>
         </motion.div>
-        <motion.p variants={item} className="mt-4 text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
+        <motion.div variants={item}>
+          <BrandMark size={56} priority className="mt-5" />
+        </motion.div>
+        <motion.p variants={item} className="mt-3 text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
           FIT23Hub Authentication
         </motion.p>
         <motion.h1 variants={item} className="mt-2 text-2xl font-semibold">
@@ -154,7 +158,7 @@ export default function LoginPage() {
             </div>
           </motion.label>
           <div className="flex justify-end">
-            <Link className="text-xs text-[var(--accent)] hover:underline" href="/forgot-password">
+            <Link className="-my-2 inline-block py-2 text-xs text-[var(--accent)] hover:underline" href="/forgot-password">
               Forgot password?
             </Link>
           </div>
@@ -201,7 +205,7 @@ export default function LoginPage() {
           </motion.button>
         </motion.form>
         <motion.p variants={item} className="mt-4 text-sm text-[var(--muted)]">
-          New student? <Link className="text-[var(--accent)]" href="/register">Create account</Link>
+          New student? <Link className="-my-2 inline-block py-2 text-[var(--accent)]" href="/register">Create account</Link>
         </motion.p>
       </motion.div>
       <SuspendedModal
