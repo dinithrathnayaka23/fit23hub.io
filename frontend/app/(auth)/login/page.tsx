@@ -10,6 +10,7 @@ import { api, ApiError } from "@/lib/api";
 import { setStoredUser } from "@/lib/auth";
 import SuspendedModal from "@/components/SuspendedModal";
 import { isAdminRole } from "@/lib/types";
+import BrandMark from "@/components/ui/BrandMark";
 
 const container = {
   hidden: { opacity: 0, y: 20 },
@@ -111,7 +112,10 @@ export default function LoginPage() {
             Back to home
           </Link>
         </motion.div>
-        <motion.p variants={item} className="mt-4 text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
+        <motion.div variants={item}>
+          <BrandMark size={56} priority className="mt-5" />
+        </motion.div>
+        <motion.p variants={item} className="mt-3 text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
           FIT23Hub Authentication
         </motion.p>
         <motion.h1 variants={item} className="mt-2 text-2xl font-semibold">

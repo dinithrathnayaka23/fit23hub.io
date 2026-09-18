@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faEnvelope, faPaperPlane } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
+import BrandMark from "@/components/ui/BrandMark";
 
 
 
@@ -48,6 +49,7 @@ export default function ForgotPasswordPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       >
+        <BrandMark size={56} priority className="mb-3" />
         <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }} className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
           FIT23Hub Account Recovery
         </motion.p>

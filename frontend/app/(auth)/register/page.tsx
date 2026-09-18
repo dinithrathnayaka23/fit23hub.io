@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faEnvelopeCircleCheck, faEye, faEyeSlash, faIdCard, faUserPlus } from "@fortawesome/free-solid-svg-icons";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
+import BrandMark from "@/components/ui/BrandMark";
 
 const container = {
   hidden: { opacity: 0, y: 20 },
@@ -121,7 +122,10 @@ export default function RegisterPage() {
             Back to home
           </Link>
         </motion.div>
-        <motion.p variants={item} className="mt-4 text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
+        <motion.div variants={item}>
+          <BrandMark size={56} priority className="mt-5" />
+        </motion.div>
+        <motion.p variants={item} className="mt-3 text-xs uppercase tracking-[0.14em] text-[var(--accent)]">
           FIT23Hub Onboarding
         </motion.p>
         <motion.h1 variants={item} className="mt-2 text-2xl font-semibold">
