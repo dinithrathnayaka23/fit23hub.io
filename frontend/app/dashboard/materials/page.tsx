@@ -163,7 +163,7 @@ export default function MaterialsPage() {
           ))}
         </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-6">
           <div className="relative lg:col-span-2">
             <FontAwesomeIcon icon={faMagnifyingGlass} className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--muted)]" />
             <input
@@ -219,7 +219,7 @@ export default function MaterialsPage() {
       </details>
 
       <div className="flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--muted)]">
-        <p>{pagination.total} materials found</p>
+        <p>{pagination.total} {pagination.total === 1 ? "material" : "materials"} found</p>
         <p>Page {pagination.page} of {pagination.totalPages}</p>
       </div>
 

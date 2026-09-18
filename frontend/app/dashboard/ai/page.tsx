@@ -477,13 +477,7 @@ export default function AiPage() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-5xl space-y-4">
-      <div className="glass-card border border-[rgba(56,189,248,0.22)] bg-[linear-gradient(120deg,rgba(10,26,46,0.92),rgba(17,46,86,0.6))] p-5">
-        <p className="text-xs uppercase tracking-[0.12em] text-[#99d9ff]">AI Learning</p>
-        <h1 className="mt-1 text-2xl font-semibold text-[#ebf8ff]">Project-Based AI Learning</h1>
-        <p className="mt-1 text-sm text-[#bfdef2]">Create a project, add study materials, then ask questions and generate quizzes/flashcards from that project.</p>
-      </div>
-
+    <section className="space-y-4">
       <div className="glass-card space-y-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <select
