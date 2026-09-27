@@ -1,4 +1,5 @@
 import { prisma } from "../prisma.js";
+import { ADMIN_ROLES } from "../middleware/auth.js";
 
 /**
  * Notification delivery is always best-effort: an event that produced a real
@@ -63,9 +64,14 @@ export async function notifyAllStudents(payload, { excludeUserId } = {}) {
   return notifyUsers(ids, payload);
 }
 
-/** Fan out to every active admin. */
+/**
+ * Fan out to every active admin, the super admin included. SUPER_ADMIN is a
+ * separate role rather than a flag on ADMIN, so filtering on "ADMIN" alone
+ * silently skipped the platform owner - who, on a batch with no other admins,
+ * was the only person these notifications were meant to reach.
+ */
 export async function notifyAdmins(payload, { excludeUserId } = {}) {
-  const ids = await findRecipients({ role: "ADMIN" }, excludeUserId);
+  const ids = await findRecipients({ role: { in: ADMIN_ROLES } }, excludeUserId);
   return notifyUsers(ids, payload);
 }
 
