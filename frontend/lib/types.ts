@@ -147,6 +147,60 @@ export type AppNotification = {
   createdAt: string;
 };
 
+export type AiProject = {
+  id: string;
+  name: string;
+  description?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AiChat = {
+  id: string;
+  title: string;
+  projectId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AiSource = {
+  id: string;
+  title: string;
+  module: string;
+  semester: number;
+  academicYear: string;
+  description?: string | null;
+  fileUrl?: string | null;
+  projectId?: string | null;
+  /** Length of the indexed text; the text itself is not sent to the list. */
+  characters: number;
+  createdAt: string;
+};
+
+export type AiCitation = {
+  id: string;
+  title: string;
+  module: string;
+  academicYear: string;
+  semester: number;
+  excerpt: string;
+  score: number;
+};
+
+export type AiMessage = {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: string;
+  citations: AiCitation[];
+};
+
+/** Remaining daily allowance; null means unlimited (admins). */
+export type AiUsage = {
+  chat: { remaining: number | null; limit: number | null };
+  artifact: { remaining: number | null; limit: number | null };
+};
+
 export type AiQuizQuestion = {
   q: string;
   options: string[];

@@ -61,7 +61,7 @@ const studentNav: NavGroup[] = [
       { href: "/dashboard/materials", label: "Materials", icon: faBookOpen, description: "Notes, slides, lab sheets and past papers shared by the batch." },
       { href: "/dashboard/recordings", label: "Recordings", icon: faVideo, description: "Recorded Kuppi sessions, grouped by semester." },
       { href: "/dashboard/live", label: "Kuppi Live", icon: faCircleNodes, description: "Scheduled and live Kuppi sessions, one click to join." },
-      { href: "/dashboard/ai", label: "AI Learning", icon: faRobot, description: "Create a project, add your study materials, then ask questions and generate quizzes and flashcards from them." },
+      { href: "/dashboard/ai", label: "AI Learning", icon: faRobot, description: "Add your notes to a notebook, then ask questions about them or practise with quizzes and flashcards. Answers come only from your own materials." },
     ],
   },
   {

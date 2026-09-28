@@ -1,4 +1,4 @@
-import type { AiAnswerMeta, AiFlashcard, AiQuizQuestion, Announcement, AnnouncementCategory, AnnouncementReader, AppNotification, LiveSession, Material, MaterialCategory, RecordedSession, User } from "./types";
+import type { AiAnswerMeta, AiChat, AiFlashcard, AiMessage, AiProject, AiQuizQuestion, AiSource, AiUsage, Announcement, AnnouncementCategory, AnnouncementReader, AppNotification, LiveSession, Material, MaterialCategory, RecordedSession, User } from "./types";
 
 export type AnnouncementInput = {
   title: string;
@@ -42,6 +42,10 @@ export function describeError(error: unknown, fallback = "Something went wrong. 
 const REQUEST_TIMEOUT_MS = 20_000;
 // Uploads legitimately take far longer than a normal request.
 const UPLOAD_TIMEOUT_MS = 180_000;
+// A model call can fall through several providers before one answers, and a
+// quiz is a long generation; the default would give up while it is still on
+// its way.
+const AI_TIMEOUT_MS = 120_000;
 
 const STATUS_MESSAGES: Record<number, string> = {
   400: "Some of those details were not valid. Check them and try again.",
@@ -97,6 +101,7 @@ function buildHeaders(options: RequestInit): Headers {
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  timeoutMs?: number,
 ): Promise<T> {
   const headers = buildHeaders(options);
 
@@ -104,7 +109,7 @@ async function request<T>(
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    options.body instanceof FormData ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
+    timeoutMs ?? (options.body instanceof FormData ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS),
   );
 
   let response: Response;
@@ -534,34 +539,12 @@ export const api = {
   },
 
   async getAiSources() {
-    return request<{ sources: Array<{
-      id: string;
-      title: string;
-      module: string;
-      semester: number;
-      academicYear: string;
-      description?: string | null;
-      contentText: string;
-      fileUrl?: string | null;
-      projectId?: string | null;
-      createdAt: string;
-    }> }>("/ai/sources", {});
+    return request<{ sources: AiSource[] }>("/ai/sources", {});
   },
 
   async getAiSourcesByProject(projectId: string) {
     const suffix = `?projectId=${encodeURIComponent(projectId)}`;
-    return request<{ sources: Array<{
-      id: string;
-      title: string;
-      module: string;
-      semester: number;
-      academicYear: string;
-      description?: string | null;
-      contentText: string;
-      fileUrl?: string | null;
-      projectId?: string | null;
-      createdAt: string;
-    }> }>(`/ai/sources${suffix}`, {});
+    return request<{ sources: AiSource[] }>(`/ai/sources${suffix}`, {});
   },
 
   async uploadAiSource(payload: {
@@ -589,97 +572,103 @@ export const api = {
     });
   },
 
+  async deleteAiSource(sourceId: string) {
+    return request<{ message: string }>(`/ai/sources/${sourceId}`, { method: "DELETE" });
+  },
+
   async getAiChats() {
-    return request<{ chats: Array<{ id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string }> }>("/ai/chats", {});
+    return request<{ chats: AiChat[] }>("/ai/chats", {});
   },
 
   async getAiChatsByProject(projectId: string) {
     const suffix = `?projectId=${encodeURIComponent(projectId)}`;
-    return request<{ chats: Array<{ id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string }> }>(`/ai/chats${suffix}`, {});
+    return request<{ chats: AiChat[] }>(`/ai/chats${suffix}`, {});
   },
 
   async createAiChat(title?: string, projectId?: string) {
-    return request<{ chat: { id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string } }>("/ai/chats", {
+    return request<{ chat: AiChat }>("/ai/chats", {
       method: "POST",
       body: JSON.stringify({ title, projectId }),
     });
   },
 
+  async renameAiChat(chatId: string, title: string) {
+    return request<{ chat: AiChat }>(`/ai/chats/${chatId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
+  },
+
+  async deleteAiChat(chatId: string) {
+    return request<{ message: string }>(`/ai/chats/${chatId}`, { method: "DELETE" });
+  },
+
   async getAiProjects() {
-    return request<{ projects: Array<{ id: string; name: string; description?: string | null; createdAt: string; updatedAt: string }> }>("/ai/projects", {});
+    return request<{ projects: AiProject[] }>("/ai/projects", {});
   },
 
   async createAiProject(payload: { name: string; description?: string }) {
-    return request<{ project: { id: string; name: string; description?: string | null; createdAt: string; updatedAt: string } }>("/ai/projects", {
+    return request<{ project: AiProject }>("/ai/projects", {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
+  async renameAiProject(projectId: string, name: string) {
+    return request<{ project: AiProject }>(`/ai/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async deleteAiProject(projectId: string) {
+    return request<{ message: string }>(`/ai/projects/${projectId}`, { method: "DELETE" });
+  },
+
+  async getAiUsage() {
+    return request<AiUsage>("/ai/usage", {});
+  },
+
   async getAiMessages(chatId: string) {
-    return request<{ messages: Array<{
-      id: string;
-      role: string;
-      content: string;
-      createdAt: string;
-      citations: Array<{ id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number }>;
-    }> }>(`/ai/chats/${chatId}/messages`, {});
+    return request<{ messages: AiMessage[] }>(`/ai/chats/${chatId}/messages`, {});
   },
 
   async askAiInChat(chatId: string, prompt: string) {
     return request<{
       response: string;
-      message: {
-        id: string;
-        role: string;
-        content: string;
-        createdAt: string;
-        citations: Array<{ id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number }>;
-      };
+      message: AiMessage;
       degraded?: boolean;
       meta?: AiAnswerMeta | null;
     }>(`/ai/chats/${chatId}/query`, {
       method: "POST",
       body: JSON.stringify({ prompt }),
-    });
+    }, AI_TIMEOUT_MS);
   },
 
   async generateQuizInChat(chatId: string, payload?: { sourceId?: string; count?: number }) {
     return request<{
       response: string;
-      message: {
-        id: string;
-        role: string;
-        content: string;
-        createdAt: string;
-        citations: Array<{ id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number }>;
-      };
+      message: AiMessage;
       quiz?: AiQuizQuestion[];
       degraded?: boolean;
       meta?: AiAnswerMeta | null;
     }>(`/ai/chats/${chatId}/quiz`, {
       method: "POST",
       body: JSON.stringify(payload || {}),
-    });
+    }, AI_TIMEOUT_MS);
   },
 
   async generateFlashcardsInChat(chatId: string, payload?: { sourceId?: string; count?: number }) {
     return request<{
       response: string;
-      message: {
-        id: string;
-        role: string;
-        content: string;
-        createdAt: string;
-        citations: Array<{ id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number }>;
-      };
+      message: AiMessage;
       flashcards?: AiFlashcard[];
       degraded?: boolean;
       meta?: AiAnswerMeta | null;
     }>(`/ai/chats/${chatId}/flashcards`, {
       method: "POST",
       body: JSON.stringify(payload || {}),
-    });
+    }, AI_TIMEOUT_MS);
   },
 };
 

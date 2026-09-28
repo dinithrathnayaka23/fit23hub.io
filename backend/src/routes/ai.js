@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { upload } from "../utils/upload.js";
-import { deleteLocalTempFile, shouldUseRemoteStorage, storeUploadedFile } from "../utils/storage.js";
+import { deleteLocalTempFile, deleteStoredFile, shouldUseRemoteStorage, storeUploadedFile } from "../utils/storage.js";
 import { generateText, generateTextStream, logAiCall } from "../utils/ai/llm.js";
 import { extractJson } from "../utils/ai/errors.js";
 import { buildCacheKey } from "../utils/ai/cache.js";
@@ -40,6 +40,12 @@ const createChatSchema = z.object({
 const createProjectSchema = z.object({
   name: z.string().min(2).max(80),
   description: z.string().max(500).optional(),
+});
+const renameProjectSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+});
+const renameChatSchema = z.object({
+  title: z.string().trim().min(2).max(80),
 });
 const generationSchema = z.object({
   sourceId: z.string().min(2).optional(),
@@ -210,7 +216,22 @@ async function getRecentChatTurns(chatId, maxMessages = 8, maxLength = 1800) {
     .slice(0, maxLength);
 }
 
-async function createAiChatTurn({ chatId, userId, userPrompt, response, citations }) {
+const MAX_CHAT_TITLE = 60;
+// Titles the app hands out before a chat has any content. A chat still carrying
+// one of these is renamed after its first turn so the chat list is readable.
+const PLACEHOLDER_CHAT_TITLES = new Set(["New chat", "New Study Chat", "General AI Chat"]);
+const isPlaceholderChatTitle = (title) => PLACEHOLDER_CHAT_TITLES.has(title) || /^Study Chat \d+$/.test(title);
+
+function titleFromText(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (clean.length <= MAX_CHAT_TITLE) return clean;
+  return `${clean.slice(0, MAX_CHAT_TITLE - 1).replace(/\s+\S*$/, "")}…`;
+}
+
+async function createAiChatTurn({ chatId, userId, userPrompt, response, citations, titleHint }) {
+  const chat = await prisma.aiChat.findUnique({ where: { id: chatId }, select: { title: true } });
+  const nextTitle = chat && isPlaceholderChatTitle(chat.title) ? titleFromText(titleHint || userPrompt) : null;
+
   const createdMessages = await prisma.$transaction([
     prisma.aiChatMessage.create({
       data: {
@@ -229,7 +250,7 @@ async function createAiChatTurn({ chatId, userId, userPrompt, response, citation
     }),
     prisma.aiChat.update({
       where: { id: chatId },
-      data: { updatedAt: new Date() },
+      data: { updatedAt: new Date(), ...(nextTitle ? { title: nextTitle } : {}) },
     }),
     prisma.aiQueryLog.create({
       data: {
@@ -375,7 +396,39 @@ router.get("/sources", requireAuth, async (req, res) => {
     },
     orderBy: { createdAt: "desc" },
   });
-  return res.json({ sources });
+
+  // The full text can run to 120k characters per source; the list only needs
+  // its size, so it never ships the text itself.
+  return res.json({
+    sources: sources.map(({ contentText, ...rest }) => ({ ...rest, characters: contentText.length })),
+  });
+});
+
+router.delete("/sources/:sourceId", requireAuth, async (req, res) => {
+  const source = await prisma.aiSource.findFirst({
+    where: { id: req.params.sourceId, uploaderId: req.user.id },
+    select: { id: true, fileUrl: true },
+  });
+  if (!source) return res.status(404).json({ message: "Source not found" });
+
+  // Chunks cascade with the source.
+  await prisma.aiSource.delete({ where: { id: source.id } });
+  await deleteStoredFile(source.fileUrl);
+  return res.json({ message: "Source removed" });
+});
+
+router.get("/usage", requireAuth, (req, res) => {
+  const isAdmin = req.user.role === "ADMIN";
+  // Infinity does not survive JSON, so an unlimited allowance is sent as null.
+  const shape = (quota) => ({
+    remaining: Number.isFinite(quota.remaining) ? quota.remaining : null,
+    limit: Number.isFinite(quota.limit) ? quota.limit : null,
+  });
+
+  return res.json({
+    chat: shape(checkUserQuota(req.user.id, "chat", { isAdmin })),
+    artifact: shape(checkUserQuota(req.user.id, "artifact", { isAdmin })),
+  });
 });
 
 router.get("/projects", requireAuth, async (req, res) => {
@@ -405,6 +458,47 @@ router.post("/projects", requireAuth, async (req, res) => {
     }
     return res.status(500).json({ message: "Failed to create project" });
   }
+});
+
+router.patch("/projects/:projectId", requireAuth, async (req, res) => {
+  try {
+    const payload = renameProjectSchema.parse(req.body || {});
+    const project = await assertProjectOwnership(req.params.projectId, req.user.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    const updated = await prisma.aiProject.update({
+      where: { id: project.id },
+      data: { name: payload.name },
+      select: { id: true, name: true, description: true, createdAt: true, updatedAt: true },
+    });
+    return res.json({ project: updated });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid payload", errors: error.issues });
+    }
+    return res.status(500).json({ message: "Failed to rename project" });
+  }
+});
+
+router.delete("/projects/:projectId", requireAuth, async (req, res) => {
+  const project = await assertProjectOwnership(req.params.projectId, req.user.id);
+  if (!project) return res.status(404).json({ message: "Project not found" });
+
+  const files = await prisma.aiSource.findMany({
+    where: { projectId: project.id, uploaderId: req.user.id },
+    select: { fileUrl: true },
+  });
+
+  // The relations are SetNull, so the project's chats and sources would
+  // otherwise linger as orphans nobody can reach. Messages and chunks cascade.
+  await prisma.$transaction([
+    prisma.aiChat.deleteMany({ where: { projectId: project.id, userId: req.user.id } }),
+    prisma.aiSource.deleteMany({ where: { projectId: project.id, uploaderId: req.user.id } }),
+    prisma.aiProject.delete({ where: { id: project.id } }),
+  ]);
+
+  await Promise.all(files.map((file) => deleteStoredFile(file.fileUrl)));
+  return res.json({ message: "Project deleted" });
 });
 
 router.post("/sources", requireAuth, upload.single("file"), async (req, res) => {
@@ -514,6 +608,41 @@ router.post("/chats", requireAuth, async (req, res) => {
     }
     return res.status(500).json({ message: "Failed to create chat" });
   }
+});
+
+router.patch("/chats/:chatId", requireAuth, async (req, res) => {
+  try {
+    const payload = renameChatSchema.parse(req.body || {});
+    const chat = await prisma.aiChat.findFirst({
+      where: { id: req.params.chatId, userId: req.user.id },
+      select: { id: true },
+    });
+    if (!chat) return res.status(404).json({ message: "Chat not found" });
+
+    const updated = await prisma.aiChat.update({
+      where: { id: chat.id },
+      data: { title: payload.title },
+      select: { id: true, title: true, projectId: true, createdAt: true, updatedAt: true },
+    });
+    return res.json({ chat: updated });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid payload", errors: error.issues });
+    }
+    return res.status(500).json({ message: "Failed to rename chat" });
+  }
+});
+
+router.delete("/chats/:chatId", requireAuth, async (req, res) => {
+  const chat = await prisma.aiChat.findFirst({
+    where: { id: req.params.chatId, userId: req.user.id },
+    select: { id: true },
+  });
+  if (!chat) return res.status(404).json({ message: "Chat not found" });
+
+  // Messages cascade with the chat.
+  await prisma.aiChat.delete({ where: { id: chat.id } });
+  return res.json({ message: "Chat deleted" });
 });
 
 router.get("/chats/:chatId/messages", requireAuth, async (req, res) => {
@@ -782,13 +911,15 @@ router.post("/chats/:chatId/quiz", requireAuth, async (req, res) => {
       recentChatTurns,
     });
 
-    const userPrompt = `Generate a ${questionCount}-question quiz${payload.sourceId ? ` from source ${payload.sourceId}` : " from my uploaded sources"}.`;
+    const scope = payload.sourceId ? `"${sources[0].title}"` : "all my materials";
+    const userPrompt = `Make a ${questionCount}-question practice quiz from ${scope}.`;
     const assistantMessage = await createAiChatTurn({
       chatId: req.params.chatId,
       userId: req.user.id,
       userPrompt,
       response: artifact.text,
       citations,
+      titleHint: `Quiz: ${payload.sourceId ? sources[0].title : "all materials"}`,
     });
 
     if (!artifact.degraded) consumeUserQuota(req.user.id, "artifact", { isAdmin: req.user.role === "ADMIN" });
@@ -844,13 +975,15 @@ router.post("/chats/:chatId/flashcards", requireAuth, async (req, res) => {
       recentChatTurns,
     });
 
-    const userPrompt = `Generate ${cardCount} flashcards${payload.sourceId ? ` from source ${payload.sourceId}` : " from my uploaded sources"}.`;
+    const scope = payload.sourceId ? `"${sources[0].title}"` : "all my materials";
+    const userPrompt = `Make ${cardCount} flashcards from ${scope}.`;
     const assistantMessage = await createAiChatTurn({
       chatId: req.params.chatId,
       userId: req.user.id,
       userPrompt,
       response: artifact.text,
       citations,
+      titleHint: `Flashcards: ${payload.sourceId ? sources[0].title : "all materials"}`,
     });
 
     if (!artifact.degraded) consumeUserQuota(req.user.id, "artifact", { isAdmin: req.user.role === "ADMIN" });

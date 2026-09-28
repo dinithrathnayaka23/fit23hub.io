@@ -85,6 +85,10 @@ export async function destroyUser(id) {
   await prisma.passwordResetToken.deleteMany({ where: { userId: id } }).catch(() => {});
   await prisma.emailVerificationToken.deleteMany({ where: { userId: id } }).catch(() => {});
   await prisma.material.deleteMany({ where: { uploaderId: id } }).catch(() => {});
+  await prisma.aiQueryLog.deleteMany({ where: { userId: id } }).catch(() => {});
+  await prisma.aiChat.deleteMany({ where: { userId: id } }).catch(() => {});
+  await prisma.aiSource.deleteMany({ where: { uploaderId: id } }).catch(() => {});
+  await prisma.aiProject.deleteMany({ where: { userId: id } }).catch(() => {});
   await prisma.announcement.deleteMany({ where: { authorId: id } }).catch(() => {});
   await prisma.user.delete({ where: { id } }).catch(() => {});
 }

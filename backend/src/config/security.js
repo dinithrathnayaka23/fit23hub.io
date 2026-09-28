@@ -57,6 +57,12 @@ const isUserKey = (key) => key.startsWith("user:");
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+// The AI routes that reach a model: asking (plain or streamed), generating a
+// quiz or flashcards, and uploading a source, which is embedded. Matched on the
+// path's ending so it holds however the router is mounted.
+const MODEL_CALL_PATH = /\/(query(\/stream)?|quiz|flashcards|sources)\/?$/;
+const callsModel = (req) => req.method === "POST" && MODEL_CALL_PATH.test(req.path);
+
 const tooMany = (message) => ({ message });
 
 // Endpoints where one account can be targeted by guessing: a password, or an
@@ -104,13 +110,14 @@ export function createRateLimiters(config = securityConfig) {
   return {
     apiRateLimiter: perUserOrIp(config.apiPerUser),
     // Only generation is expensive. Opening the AI page lists projects, chats
-    // and sources; counting those against the tight AI budget would lock a
-    // student out for simply moving around the page, so reads share the
-    // ordinary API budget and the AI limit applies to what calls a model.
+    // and sources, and tidying up renames and deletes them; counting those
+    // against the tight AI budget would lock a student out for simply using
+    // the page, so they share the ordinary API budget and the AI limit
+    // applies only to what calls a model.
     aiRateLimiter: [
       perUserOrIp(config.apiPerUser),
       perUserOrIp(config.aiPerUser, {
-        skip: (req) => SAFE_METHODS.has(req.method),
+        skip: (req) => !callsModel(req),
         message: tooMany("You have reached the AI request limit for now. Please try again in a few minutes."),
       }),
     ],

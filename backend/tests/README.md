@@ -38,6 +38,7 @@ TEST_REDIS_URL=redis://localhost:6379 npm test
 | `permissions.test.mjs` | Role boundaries, the immutable super admin, instant revocation on suspension and removal |
 | `content.test.mjs` | Soft delete and restore, case-insensitive search, announcements, profile-photo validation |
 | `session-cache.test.mjs` | Cross-instance cache sharing and invalidation, TTL, in-memory fallback |
+| `ai-workspace.test.mjs` | AI project/chat/source rename and delete, ownership checks, the source list's size field, daily usage |
 | `rate-limit.test.mjs` | Per-student budgets behind one shared IP, forged cookies, per-account brute-force limits |
 
 ## What is NOT covered
