@@ -29,6 +29,9 @@ beforeAll(async () => {
   app.get("/api/materials", apiRateLimiter, ok);
   app.post("/api/ai/query", aiRateLimiter, ok);
   app.get("/api/ai/projects", aiRateLimiter, ok);
+  app.patch("/api/ai/chats/:id", aiRateLimiter, ok);
+  app.delete("/api/ai/chats/:id", aiRateLimiter, ok);
+  app.post("/api/ai/chats/:id/quiz", aiRateLimiter, ok);
   // Mounted exactly as server.js mounts it, so the limiter sees the same
   // router-relative paths ("/login") it sees in production.
   const auth = express.Router();
@@ -116,6 +119,26 @@ describe("the AI limit only counts requests that call a model", () => {
 
     // The generation budget is still fully available afterwards.
     expect((await post("/api/ai/query", {}, cookie)).status).toBe(200);
+  });
+});
+
+describe("tidying up the AI workspace never uses the AI budget", () => {
+  it("lets a student rename and delete chats past the AI limit", async () => {
+    const cookie = sessionFor();
+    const send = (method, path) => fetch(`${base}${path}`, { method, headers: { Cookie: cookie } });
+    const statuses = [];
+    // One more housekeeping call than the whole AI budget, while staying
+    // inside the ordinary one. Were these charged as AI calls, the last
+    // would already be refused.
+    for (let r = 0; r < config.aiPerUser; r += 1) {
+      statuses.push((await send("PATCH", "/api/ai/chats/c1")).status);
+    }
+    statuses.push((await send("DELETE", "/api/ai/chats/c1")).status);
+    expect(config.aiPerUser + 2).toBeLessThanOrEqual(config.apiPerUser);
+    expect(statuses.every((code) => code === 200)).toBe(true);
+
+    // ...and generating is still allowed afterwards.
+    expect((await post("/api/ai/chats/c1/quiz", {}, cookie)).status).toBe(200);
   });
 });
 
