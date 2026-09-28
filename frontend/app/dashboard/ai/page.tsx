@@ -1,663 +1,660 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faPaperPlane,
-  faPlus,
-  faUpload,
-  faBookOpen,
-  faClipboardQuestion,
-  faClone,
-} from "@fortawesome/free-solid-svg-icons";
-import { api, askAiInChatStream } from "@/lib/api";
-import { QuizCard, FlashcardsCard } from "@/components/ai/StudyArtifacts";
+import { faBars, faCircleExclamation, faFolderOpen, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { api, ApiError, askAiInChatStream, describeError } from "@/lib/api";
 import { hasSession } from "@/lib/auth";
+import type { AiChat, AiMessage, AiProject, AiSource, AiUsage } from "@/lib/types";
+import { ErrorState, LoadingState } from "@/components/ui/StateCard";
+import { Drawer } from "@/components/ai/Modal";
+import { ConfirmDialog, NameDialog } from "@/components/ai/Dialogs";
+import AddSourceDialog, { type SourceDefaults } from "@/components/ai/AddSourceDialog";
+import StudyToolDialog, { type StudyToolKind } from "@/components/ai/StudyToolDialog";
+import WorkspaceSidebar from "@/components/ai/WorkspaceSidebar";
+import SourcesPanel from "@/components/ai/SourcesPanel";
+import ChatStart from "@/components/ai/ChatStart";
+import Composer from "@/components/ai/Composer";
+import { AssistantBubble, PendingBubble, UserBubble } from "@/components/ai/ChatMessage";
 
-const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
-const levelFromSemester = (semester: number) => `Level ${Math.ceil(semester / 2)}`;
-const quickPrompts = [
-  "Summarize these uploaded sources.",
-  "Give likely exam questions from these notes.",
-  "Explain the hardest concept in simple terms.",
-];
-
-type AiProject = { id: string; name: string; description?: string | null; createdAt: string; updatedAt: string };
-type AiChat = { id: string; title: string; projectId?: string | null; createdAt: string; updatedAt: string };
-type AiSource = {
-  id: string;
-  title: string;
-  module: string;
-  semester: number;
-  academicYear: string;
-  description?: string | null;
-  createdAt: string;
-};
-type AiCitation = { id: string; title: string; module: string; academicYear: string; semester: number; excerpt: string; score: number };
-type AiMessage = {
-  id: string;
-  role: string;
-  content: string;
-  createdAt: string;
-  citations: AiCitation[];
+const DEFAULT_NOTEBOOK = "My notebook";
+const DRAFT_CHAT_TITLE = "New chat";
+const STORAGE = {
+  project: "fit23hub.ai.project",
+  sourceDefaults: "fit23hub.ai.sourceDefaults",
 };
 
-type QuizItem = {
-  question: string;
-  options: { key: "A" | "B" | "C" | "D"; text: string }[];
-  answer: "A" | "B" | "C" | "D";
-  why: string;
-};
-
-type FlashcardItem = {
-  front: string;
-  back: string;
-};
-
-function parseQuiz(content: string): QuizItem[] {
-  const lines = String(content || "").replace(/\r/g, "").split("\n");
-  const blocks: string[][] = [];
-  let current: string[] = [];
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (/^Q\d+\./i.test(line) && current.length) {
-      blocks.push(current);
-      current = [line];
-    } else {
-      current.push(line);
-    }
-  }
-  if (current.length) blocks.push(current);
-
-  const result: QuizItem[] = [];
-
-  for (const block of blocks) {
-    const qLine = block.find((line) => /^Q\d+\./i.test(line));
-    if (!qLine) continue;
-
-    const question = qLine.replace(/^Q\d+\.\s*/i, "").trim();
-    const options = (["A", "B", "C", "D"] as const)
-      .map((key) => {
-        const line = block.find((item) => new RegExp(`^${key}\\)\\s+`, "i").test(item));
-        if (!line) return null;
-        return {
-          key,
-          text: line.replace(new RegExp(`^${key}\\)\\s+`, "i"), "").trim(),
-        };
-      })
-      .filter((item): item is { key: "A" | "B" | "C" | "D"; text: string } => Boolean(item));
-
-    const answerLine = block.find((line) => /^Answer:\s*[A-D]/i.test(line));
-    const whyStartIndex = block.findIndex((line) => /^Why:\s*/i.test(line));
-    if (!answerLine || whyStartIndex === -1 || options.length !== 4 || !question) continue;
-
-    const answer = answerLine.replace(/^Answer:\s*/i, "").trim().charAt(0).toUpperCase() as "A" | "B" | "C" | "D";
-    const whyLines = block.slice(whyStartIndex);
-    const why = whyLines
-      .map((line, index) => (index === 0 ? line.replace(/^Why:\s*/i, "").trim() : line))
-      .join(" ")
-      .trim();
-
-    if (!["A", "B", "C", "D"].includes(answer)) continue;
-    result.push({ question, options, answer, why });
-  }
-
-  return result;
-}
-
-function parseFlashcards(content: string): FlashcardItem[] {
-  const lines = String(content || "").replace(/\r/g, "").split("\n");
-  const cards: FlashcardItem[] = [];
-
-  let front = "";
-  let back = "";
-  let mode: "front" | "back" | null = null;
-
-  const pushCard = () => {
-    if (front.trim() && back.trim()) {
-      cards.push({ front: front.trim(), back: back.trim() });
-    }
-    front = "";
-    back = "";
-    mode = null;
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
-
-    if (/^Card\s+\d+/i.test(line)) {
-      pushCard();
-      continue;
-    }
-
-    if (/^Front:\s*/i.test(line)) {
-      mode = "front";
-      front = line.replace(/^Front:\s*/i, "").trim();
-      continue;
-    }
-
-    if (/^Back:\s*/i.test(line)) {
-      mode = "back";
-      back = line.replace(/^Back:\s*/i, "").trim();
-      continue;
-    }
-
-    if (mode === "front") {
-      front = `${front} ${line}`.trim();
-    } else if (mode === "back") {
-      back = `${back} ${line}`.trim();
-    }
-  }
-
-  pushCard();
-  return cards;
-}
-
-/**
- * Newer generations are stored as JSON from the backend; older chat history is
- * still the legacy "Q1. / Answer: / Front: / Back:" text. Try JSON first and
- * fall back to the line parser so existing conversations keep rendering.
- */
-function parseStructured(content: string): { quiz: QuizItem[]; cards: FlashcardItem[] } {
-  const trimmed = String(content || "").trim();
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return { quiz: [], cards: [] };
-
+/** Browser storage can throw (private mode, blocked site data); it is only a convenience here. */
+function readStored(key: string): string | null {
   try {
-    const parsed = JSON.parse(trimmed);
-    const letters: ("A" | "B" | "C" | "D")[] = ["A", "B", "C", "D"];
-
-    const rawQuestions: unknown[] = Array.isArray(parsed?.questions) ? parsed.questions : [];
-    const quiz: QuizItem[] = rawQuestions
-      .filter((item: unknown): item is { q: string; options: string[]; answerIndex: number; why?: string } => {
-        const candidate = item as { q?: unknown; options?: unknown; answerIndex?: unknown };
-        return typeof candidate?.q === "string"
-          && Array.isArray(candidate?.options)
-          && candidate.options.length === 4
-          && typeof candidate?.answerIndex === "number"
-          && candidate.answerIndex >= 0
-          && candidate.answerIndex <= 3;
-      })
-      .map((item) => ({
-        question: item.q,
-        options: item.options.map((text: string, i: number) => ({ key: letters[i], text })),
-        answer: letters[item.answerIndex],
-        why: item.why || "",
-      }));
-
-    const rawCards: unknown[] = Array.isArray(parsed?.cards) ? parsed.cards : [];
-    const cards: FlashcardItem[] = rawCards
-      .filter((item: unknown): item is { front: string; back: string } => {
-        const candidate = item as { front?: unknown; back?: unknown };
-        return typeof candidate?.front === "string" && typeof candidate?.back === "string";
-      })
-      .map((item) => ({ front: item.front, back: item.back }));
-
-    return { quiz, cards };
+    return window.localStorage.getItem(key);
   } catch {
-    return { quiz: [], cards: [] };
+    return null;
   }
 }
 
-function AssistantContent({ content }: { content: string }) {
-  const structured = parseStructured(content);
-  const quizItems = structured.quiz.length ? structured.quiz : parseQuiz(content);
-  const flashcards = structured.cards.length ? structured.cards : parseFlashcards(content);
-
-  if (quizItems.length >= 3) {
-    return <QuizCard items={quizItems} />;
+function writeStored(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Not remembering the last choice is harmless.
   }
-
-  if (flashcards.length >= 3) {
-    return <FlashcardsCard cards={flashcards} />;
-  }
-
-  return <p className="mt-1 whitespace-pre-wrap leading-relaxed">{content}</p>;
 }
+
+function readSourceDefaults(fallbackModule: string): SourceDefaults {
+  try {
+    const parsed = JSON.parse(readStored(STORAGE.sourceDefaults) || "{}");
+    return {
+      module: typeof parsed.module === "string" && parsed.module ? parsed.module : fallbackModule,
+      semester: Number.isInteger(parsed.semester) && parsed.semester >= 1 && parsed.semester <= 8 ? parsed.semester : 1,
+    };
+  } catch {
+    return { module: fallbackModule, semester: 1 };
+  }
+}
+
+type Pending = { chatId: string; kind: "ask" | StudyToolKind; prompt: string };
+
+type DialogState =
+  | { type: "newProject" }
+  | { type: "renameProject" }
+  | { type: "deleteProject" }
+  | { type: "renameChat"; chat: AiChat }
+  | { type: "deleteChat"; chat: AiChat }
+  | { type: "addSource" }
+  | { type: "deleteSource"; source: AiSource }
+  | { type: "tool"; kind: StudyToolKind };
+
+const PENDING_STATUS: Record<Pending["kind"], string> = {
+  ask: "Reading your materials...",
+  quiz: "Writing your quiz - this takes a few seconds...",
+  flashcards: "Making your flashcards - this takes a few seconds...",
+};
 
 export default function AiPage() {
   const signedIn = useMemo(() => hasSession(), []);
+
+  const [boot, setBoot] = useState<"loading" | "ready" | "error">("loading");
+  const [bootError, setBootError] = useState<unknown>(null);
 
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [activeProjectId, setActiveProjectId] = useState("");
   const [sources, setSources] = useState<AiSource[]>([]);
   const [chats, setChats] = useState<AiChat[]>([]);
+  // "" is an unsaved draft: the chat is only created once something is sent,
+  // so "New chat" never leaves empty chats behind.
   const [activeChatId, setActiveChatId] = useState("");
   const [messages, setMessages] = useState<AiMessage[]>([]);
-  const [newProjectName, setNewProjectName] = useState("");
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [usage, setUsage] = useState<AiUsage | null>(null);
 
   const [prompt, setPrompt] = useState("");
-  const [sourceTitle, setSourceTitle] = useState("");
-  const [sourceModule, setSourceModule] = useState("");
-  const [sourceSemester, setSourceSemester] = useState(1);
-  const [sourceText, setSourceText] = useState("");
-  const [sourceFile, setSourceFile] = useState<File | undefined>(undefined);
-  const [selectedGenerationSourceId, setSelectedGenerationSourceId] = useState("all");
-
-  const [error, setError] = useState("");
-  const [isAsking, setIsAsking] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
   const [streamingText, setStreamingText] = useState("");
-  const [isUploading, setIsUploading] = useState(false);
-  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
-  const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState(false);
-  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [autoOpenId, setAutoOpenId] = useState("");
+  const [error, setError] = useState("");
 
-  const loadProjects = useCallback(async () => {
-    if (!signedIn) return "";
-    const result = await api.getAiProjects();
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [dialogKey, setDialogKey] = useState(0);
+  const [drawer, setDrawer] = useState<"chats" | "sources" | null>(null);
 
-    if (!result.projects.length) {
-      const created = await api.createAiProject({ name: "General Project" });
-      setProjects([created.project]);
-      return created.project.id;
-    }
+  const activeChatRef = useRef("");
+  const chatLoadSeq = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
 
-    setProjects(result.projects);
-    return result.projects[0].id;
-  }, [signedIn]);
+  const activeProject = projects.find((project) => project.id === activeProjectId);
+  const activeChat = chats.find((chat) => chat.id === activeChatId);
+  const busy = pending !== null;
 
-  const loadSources = useCallback(async (projectId: string) => {
-    if (!signedIn || !projectId) return;
-    const result = await api.getAiSourcesByProject(projectId);
-    setSources(result.sources);
-  }, [signedIn]);
+  const openDialog = (next: DialogState) => {
+    setDrawer(null);
+    setDialogKey((key) => key + 1);
+    setDialog(next);
+  };
+  const closeDialog = useCallback(() => setDialog(null), []);
 
-  const loadChats = useCallback(async (projectId: string) => {
-    if (!signedIn || !projectId) return "";
-    const result = await api.getAiChatsByProject(projectId);
-    setChats(result.chats);
+  /* ---------------------------- loading ---------------------------- */
 
-    if (!result.chats.length) {
-      const created = await api.createAiChat("General AI Chat", projectId);
-      setChats([created.chat]);
-      setActiveChatId(created.chat.id);
-      return created.chat.id;
-    }
+  const refreshUsage = useCallback(() => {
+    api.getAiUsage().then(setUsage).catch(() => {});
+  }, []);
 
-    const stillExists = result.chats.some((chat) => chat.id === activeChatId);
-    if (!activeChatId || !stillExists) {
-      setActiveChatId(result.chats[0].id);
-      return result.chats[0].id;
-    }
+  const openChat = useCallback(async (chatId: string) => {
+    activeChatRef.current = chatId;
+    stickToBottom.current = true;
+    setActiveChatId(chatId);
+    setAutoOpenId("");
+    setError("");
+    const seq = ++chatLoadSeq.current;
 
-    return activeChatId;
-  }, [signedIn, activeChatId]);
-
-  const loadMessages = useCallback(async (chatId: string) => {
-    if (!signedIn || !chatId) return;
-    const result = await api.getAiMessages(chatId);
-    setMessages(result.messages as AiMessage[]);
-  }, [signedIn]);
-
-  useEffect(() => {
-    if (!signedIn) {
-      setError("Please login again.");
+    if (!chatId) {
+      setMessages([]);
+      setLoadingMessages(false);
       return;
     }
 
-    loadProjects()
-      .then((projectId) => {
-        if (!projectId) return null;
-        setActiveProjectId(projectId);
-        return null;
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load AI workspace"));
-  }, [signedIn, loadProjects]);
-
-  useEffect(() => {
-    if (!activeProjectId) return;
-
-    Promise.all([loadSources(activeProjectId), loadChats(activeProjectId)])
-      .then(([, chatId]) => {
-        if (chatId) return loadMessages(chatId);
-        return null;
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load project workspace"));
-  }, [activeProjectId, loadSources, loadChats, loadMessages]);
-
-  useEffect(() => {
-    if (!activeChatId) return;
-    loadMessages(activeChatId).catch((err) => setError(err instanceof Error ? err.message : "Failed to load messages"));
-  }, [activeChatId, loadMessages]);
-
-  useEffect(() => {
-    if (selectedGenerationSourceId === "all") return;
-    const exists = sources.some((item) => item.id === selectedGenerationSourceId);
-    if (!exists) {
-      setSelectedGenerationSourceId("all");
-    }
-  }, [sources, selectedGenerationSourceId]);
-
-  const onCreateChat = async () => {
-    if (!signedIn || !activeProjectId) return;
+    setLoadingMessages(true);
     try {
-      const created = await api.createAiChat(`Study Chat ${chats.length + 1}`, activeProjectId);
-      setChats((prev) => [created.chat, ...prev]);
-      setActiveChatId(created.chat.id);
-      setMessages([]);
+      const result = await api.getAiMessages(chatId);
+      if (seq === chatLoadSeq.current) setMessages(result.messages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create chat");
+      if (seq === chatLoadSeq.current) setError(describeError(err, "Could not load this chat."));
+    } finally {
+      if (seq === chatLoadSeq.current) setLoadingMessages(false);
     }
+  }, []);
+
+  const openProject = useCallback(async (projectId: string) => {
+    setActiveProjectId(projectId);
+    writeStored(STORAGE.project, projectId);
+    setSources([]);
+    setChats([]);
+
+    const [sourceResult, chatResult] = await Promise.all([
+      api.getAiSourcesByProject(projectId),
+      api.getAiChatsByProject(projectId),
+    ]);
+    setSources(sourceResult.sources);
+    setChats(chatResult.chats);
+    // Pick up where the student left off; a notebook with no chats opens on the start screen.
+    await openChat(chatResult.chats[0]?.id ?? "");
+  }, [openChat]);
+
+  const start = useCallback(async () => {
+    try {
+      let { projects: list } = await api.getAiProjects();
+      if (!list.length) {
+        const created = await api.createAiProject({ name: DEFAULT_NOTEBOOK });
+        list = [created.project];
+      }
+      setProjects(list);
+
+      const remembered = readStored(STORAGE.project);
+      const initial = list.find((project) => project.id === remembered) ?? list[0];
+      await openProject(initial.id);
+      refreshUsage();
+      setBoot("ready");
+    } catch (err) {
+      setBootError(err);
+      setBoot("error");
+    }
+  }, [openProject, refreshUsage]);
+
+  useEffect(() => {
+    if (signedIn) void start();
+  }, [signedIn, start]);
+
+  const retryStart = () => {
+    setBoot("loading");
+    void start();
   };
 
-  const onAsk = async (event: FormEvent) => {
-    event.preventDefault();
+  const refreshChats = useCallback(async (projectId: string) => {
+    const result = await api.getAiChatsByProject(projectId).catch(() => null);
+    if (result) setChats(result.chats);
+  }, []);
+
+  const refreshSources = useCallback(async (projectId: string) => {
+    const result = await api.getAiSourcesByProject(projectId);
+    setSources(result.sources);
+  }, []);
+
+  // Keep the newest message in view as replies arrive - unless the student has
+  // scrolled up to re-read something, in which case leave them there.
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (el) stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // The start screen reads top-down; only a conversation pins to the bottom.
+    if (!activeChatId && !pending) el.scrollTop = 0;
+    else if (stickToBottom.current) el.scrollTop = el.scrollHeight;
+  }, [activeChatId, messages, pending, streamingText]);
+
+  /* ---------------------------- actions ---------------------------- */
+
+  /** Returns the chat to send into, creating it first when the student is on a draft. */
+  const ensureChat = async (): Promise<string> => {
+    if (activeChatRef.current) return activeChatRef.current;
+    const { chat } = await api.createAiChat(DRAFT_CHAT_TITLE, activeProjectId);
+    setChats((prev) => [chat, ...prev]);
+    activeChatRef.current = chat.id;
+    chatLoadSeq.current += 1;
+    setActiveChatId(chat.id);
+    setMessages([]);
+    return chat.id;
+  };
+
+  /** Reloads the chat the reply belonged to, if the student is still looking at it. */
+  const settle = async (chatId: string, projectId: string) => {
+    if (activeChatRef.current === chatId) {
+      const seq = ++chatLoadSeq.current;
+      const result = await api.getAiMessages(chatId).catch(() => null);
+      if (result && seq === chatLoadSeq.current) setMessages(result.messages);
+    }
+    await refreshChats(projectId);
+    refreshUsage();
+  };
+
+  const ask = async (question: string) => {
+    if (busy || !activeProjectId) return;
     setError("");
-    if (!signedIn || !activeChatId || !prompt.trim()) return;
-
-    const question = prompt.trim();
-    const chatId = activeChatId;
-
-    setIsAsking(true);
-    setStreamingText("");
     setPrompt("");
+    const projectId = activeProjectId;
 
+    let chatId: string;
+    try {
+      chatId = await ensureChat();
+    } catch (err) {
+      setError(describeError(err, "Could not start a chat."));
+      setPrompt(question);
+      return;
+    }
+
+    stickToBottom.current = true;
+    setPending({ chatId, kind: "ask", prompt: question });
+    setStreamingText("");
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let restorePrompt = false;
     try {
       let sawToken = false;
+      let streamError = "";
 
       await askAiInChatStream(chatId, question, {
         onToken: (chunk) => {
           sawToken = true;
           setStreamingText((current) => current + chunk);
         },
-        onError: (message) => setError(message),
-      });
+        onError: (message) => {
+          streamError = message;
+        },
+      }, controller.signal);
 
-      // Nothing arrived over the stream (proxy stripped it, or the browser
-      // buffered it away) - fall back to the plain endpoint so the student
-      // still gets an answer.
-      if (!sawToken) {
+      if (streamError) {
+        setError(streamError);
+        restorePrompt = true;
+      } else if (!sawToken) {
+        // Nothing arrived over the stream (a proxy buffered it away) - fall
+        // back to the plain endpoint so the student still gets an answer.
         await api.askAiInChat(chatId, question);
       }
-
-      await loadMessages(chatId);
     } catch (err) {
-      // The stream never opened at all; retry once without streaming.
-      try {
-        await api.askAiInChat(chatId, question);
-        await loadMessages(chatId);
-      } catch (fallbackError) {
-        setError(fallbackError instanceof Error ? fallbackError.message : "AI request failed");
-        setPrompt(question);
+      if (controller.signal.aborted) {
+        restorePrompt = true;
+      } else {
+        // The stream never opened; try once without streaming.
+        try {
+          await api.askAiInChat(chatId, question);
+        } catch (fallbackError) {
+          setError(describeError(fallbackError, "The AI could not answer just now. Please try again."));
+          restorePrompt = true;
+        }
       }
       void err;
     } finally {
+      abortRef.current = null;
+      await settle(chatId, projectId);
       setStreamingText("");
-      setIsAsking(false);
+      setPending(null);
+      if (restorePrompt) setPrompt((current) => current || question);
     }
   };
 
-  const onUploadSource = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!signedIn || !activeProjectId) return;
+  const stop = () => abortRef.current?.abort();
 
+  const generate = async (kind: StudyToolKind, options: { sourceId?: string; count: number }) => {
+    if (busy || !activeProjectId) return;
     setError("");
+    const projectId = activeProjectId;
+
+    let chatId: string;
     try {
-      setIsUploading(true);
-      await api.uploadAiSource({
-        projectId: activeProjectId,
-        title: sourceTitle,
-        module: sourceModule,
-        semester: sourceSemester,
-        academicYear: levelFromSemester(sourceSemester),
-        contentText: sourceText,
-        file: sourceFile,
-      });
-
-      setSourceTitle("");
-      setSourceModule("");
-      setSourceText("");
-      setSourceFile(undefined);
-      await loadSources(activeProjectId);
+      chatId = await ensureChat();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to upload source");
-    } finally {
-      setIsUploading(false);
+      setError(describeError(err, "Could not start a chat."));
+      return;
     }
-  };
 
-  const onCreateProject = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!signedIn || !newProjectName.trim()) return;
-
-    setError("");
-    try {
-      setIsCreatingProject(true);
-      const created = await api.createAiProject({ name: newProjectName.trim() });
-      setProjects((prev) => [created.project, ...prev]);
-      setActiveProjectId(created.project.id);
-      setNewProjectName("");
-      setMessages([]);
-      setChats([]);
-      setSources([]);
-      setSelectedGenerationSourceId("all");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create project");
-    } finally {
-      setIsCreatingProject(false);
-    }
-  };
-
-  const onGenerateQuiz = async () => {
-    if (!signedIn || !activeChatId) return;
-    setError("");
+    const source = options.sourceId ? sources.find((item) => item.id === options.sourceId) : undefined;
+    const scope = source ? `"${source.title}"` : "all my materials";
+    const label = kind === "quiz"
+      ? `Make a ${options.count}-question practice quiz from ${scope}.`
+      : `Make ${options.count} flashcards from ${scope}.`;
+    stickToBottom.current = true;
+    setPending({ chatId, kind, prompt: label });
 
     try {
-      setIsGeneratingQuiz(true);
-      await api.generateQuizInChat(activeChatId, {
-        sourceId: selectedGenerationSourceId === "all" ? undefined : selectedGenerationSourceId,
-        count: 10,
-      });
-      await loadMessages(activeChatId);
+      const result = kind === "quiz"
+        ? await api.generateQuizInChat(chatId, options)
+        : await api.generateFlashcardsInChat(chatId, options);
+      if (!result.degraded && activeChatRef.current === chatId) setAutoOpenId(result.message.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate quiz");
+      setError(describeError(err, `Could not create the ${kind === "quiz" ? "quiz" : "flashcards"}. Please try again.`));
     } finally {
-      setIsGeneratingQuiz(false);
+      await settle(chatId, projectId);
+      setPending(null);
     }
   };
 
-  const onGenerateFlashcards = async () => {
-    if (!signedIn || !activeChatId) return;
+  const selectProject = async (projectId: string) => {
+    if (projectId === activeProjectId) return;
+    setDrawer(null);
     setError("");
-
     try {
-      setIsGeneratingFlashcards(true);
-      await api.generateFlashcardsInChat(activeChatId, {
-        sourceId: selectedGenerationSourceId === "all" ? undefined : selectedGenerationSourceId,
-        count: 10,
-      });
-      await loadMessages(activeChatId);
+      await openProject(projectId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate flashcards");
-    } finally {
-      setIsGeneratingFlashcards(false);
+      setError(describeError(err, "Could not open that notebook."));
     }
   };
+
+  const selectChat = (chatId: string) => {
+    setDrawer(null);
+    if (chatId !== activeChatId) void openChat(chatId);
+  };
+
+  const newChat = () => {
+    setDrawer(null);
+    void openChat("");
+  };
+
+  /* ---------------------------- dialogs ---------------------------- */
+
+  const createProject = async (name: string) => {
+    const { project } = await api.createAiProject({ name });
+    setProjects((prev) => [project, ...prev]);
+    await openProject(project.id);
+  };
+
+  const renameProject = async (name: string) => {
+    const { project } = await api.renameAiProject(activeProjectId, name);
+    setProjects((prev) => prev.map((item) => (item.id === project.id ? project : item)));
+  };
+
+  const deleteProject = async () => {
+    await api.deleteAiProject(activeProjectId);
+    let remaining = projects.filter((item) => item.id !== activeProjectId);
+    if (!remaining.length) {
+      const created = await api.createAiProject({ name: DEFAULT_NOTEBOOK });
+      remaining = [created.project];
+    }
+    setProjects(remaining);
+    await openProject(remaining[0].id);
+  };
+
+  const renameChat = async (chat: AiChat, title: string) => {
+    const result = await api.renameAiChat(chat.id, title);
+    setChats((prev) => prev.map((item) => (item.id === chat.id ? { ...item, title: result.chat.title } : item)));
+  };
+
+  const deleteChat = async (chat: AiChat) => {
+    await api.deleteAiChat(chat.id);
+    setChats((prev) => prev.filter((item) => item.id !== chat.id));
+    if (chat.id === activeChatRef.current) void openChat("");
+  };
+
+  const deleteSource = async (source: AiSource) => {
+    await api.deleteAiSource(source.id);
+    setSources((prev) => prev.filter((item) => item.id !== source.id));
+  };
+
+  const sourceAdded = (used: SourceDefaults) => {
+    writeStored(STORAGE.sourceDefaults, JSON.stringify(used));
+    void refreshSources(activeProjectId).catch(() => {});
+  };
+
+  /* ---------------------------- render ---------------------------- */
+
+  if (!signedIn) {
+    return <ErrorState error={new ApiError("Please sign in again to use AI Learning.", 401)} />;
+  }
+  if (boot === "loading") return <LoadingState label="Opening your AI workspace..." />;
+  if (boot === "error") return <ErrorState error={bootError} fallback="Could not open the AI workspace." onRetry={retryStart} />;
+
+  const notebookName = activeProject?.name ?? DEFAULT_NOTEBOOK;
+  const chatRemaining = usage?.chat.remaining ?? null;
+  const blockedReason = sources.length === 0
+    ? "Add study material first, then ask about it here"
+    : chatRemaining === 0
+      ? "You've used today's questions - they reset at midnight"
+      : null;
+  const footnote = chatRemaining === null
+    ? "Answers come only from your materials. Check the cited excerpts for anything important."
+    : `Answers come only from your materials · ${chatRemaining} question${chatRemaining === 1 ? "" : "s"} left today`;
+
+  const showPending = pending && pending.chatId === activeChatId;
+  const showStart = !activeChatId && !showPending;
+
+  const sidebar = (
+    <WorkspaceSidebar
+      projects={projects}
+      activeProject={activeProject}
+      chats={chats}
+      activeChatId={activeChatId}
+      onSelectProject={(id) => void selectProject(id)}
+      onNewProject={() => openDialog({ type: "newProject" })}
+      onRenameProject={() => openDialog({ type: "renameProject" })}
+      onDeleteProject={() => openDialog({ type: "deleteProject" })}
+      onSelectChat={selectChat}
+      onNewChat={newChat}
+      onRenameChat={(chat) => openDialog({ type: "renameChat", chat })}
+      onDeleteChat={(chat) => openDialog({ type: "deleteChat", chat })}
+    />
+  );
+
+  const sourcesPanel = (
+    <SourcesPanel
+      sources={sources}
+      onAdd={() => openDialog({ type: "addSource" })}
+      onDelete={(source) => openDialog({ type: "deleteSource", source })}
+    />
+  );
 
   return (
-    <section className="space-y-4">
-      <div className="glass-card space-y-4 p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={activeProjectId}
-            onChange={(e) => setActiveProjectId(e.target.value)}
-            className="min-w-[220px] rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.72)] px-3 py-2 text-sm"
-          >
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name}</option>
-            ))}
-          </select>
-          <form className="flex items-center gap-2" onSubmit={onCreateProject}>
-            <input
-              className="w-[180px] rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.72)] px-3 py-2 text-sm"
-              placeholder="New project name"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-            />
-            <button
-              type="submit"
-              disabled={isCreatingProject || !newProjectName.trim()}
-              className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] hover:text-white disabled:opacity-60"
-            >
-              <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
-              {isCreatingProject ? "Creating..." : "New Project"}
-            </button>
-          </form>
-          <select
-            value={activeChatId}
-            onChange={(e) => setActiveChatId(e.target.value)}
-            className="min-w-[220px] rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.72)] px-3 py-2 text-sm"
-          >
-            {chats.map((chat) => (
-              <option key={chat.id} value={chat.id}>{chat.title}</option>
-            ))}
-          </select>
-          <button type="button" onClick={onCreateChat} className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] hover:text-white">
-            <FontAwesomeIcon icon={faPlus} className="h-3 w-3" />
-            New Chat
-          </button>
-          <span className="ml-auto rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--muted)]">
-            {sources.length} Sources in Project
-          </span>
-        </div>
+    <>
+      <div className="glass-card grid h-[calc(100dvh-5.5rem)] min-h-[520px] grid-cols-1 overflow-hidden lg:h-[calc(100dvh-16.5rem)] lg:grid-cols-[16.5rem_minmax(0,1fr)] xl:grid-cols-[16.5rem_minmax(0,1fr)_18rem]">
+        <aside className="hidden min-h-0 border-r border-[var(--border)] bg-[rgba(7,13,23,0.35)] lg:block" aria-label="Notebook and chats">
+          {sidebar}
+        </aside>
 
-        <div className="flex flex-wrap gap-2">
-          {quickPrompts.map((item) => (
-            <button key={item} type="button" onClick={() => setPrompt(item)} className="rounded-full border border-[var(--border)] bg-[rgba(11,18,32,0.45)] px-3 py-1.5 text-left text-xs text-[var(--muted)] hover:text-white">
-              {item}
-            </button>
-          ))}
-        </div>
-
-        <div className="rounded-xl border border-[var(--border)] bg-[rgba(11,18,32,0.35)] p-3">
-          <p className="text-xs uppercase tracking-[0.12em] text-[var(--accent)]">Study Tools</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <select
-              value={selectedGenerationSourceId}
-              onChange={(e) => setSelectedGenerationSourceId(e.target.value)}
-              className="min-w-[220px] rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.72)] px-3 py-2 text-sm"
-            >
-              <option value="all">All Uploaded Sources</option>
-              {sources.map((source) => (
-                <option key={source.id} value={source.id}>{source.title}</option>
-              ))}
-            </select>
+        <section className="flex min-h-0 min-w-0 flex-col" aria-label="Chat">
+          <header className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2.5 sm:px-4">
             <button
               type="button"
-              onClick={onGenerateQuiz}
-              disabled={!activeChatId || isGeneratingQuiz || isGeneratingFlashcards}
-              className="inline-flex items-center gap-2 rounded-lg border border-[rgba(56,189,248,0.3)] bg-[rgba(56,189,248,0.1)] px-3 py-2 text-sm text-[#d8eeff] hover:bg-[rgba(56,189,248,0.18)] disabled:opacity-60"
+              onClick={() => setDrawer("chats")}
+              aria-label="Notebook and chats"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--muted)] transition hover:text-white lg:hidden"
             >
-              <FontAwesomeIcon icon={faClipboardQuestion} className="h-4 w-4" />
-              {isGeneratingQuiz ? "Generating Quiz..." : "Generate Quiz (10)"}
+              <FontAwesomeIcon icon={faBars} className="h-3.5 w-3.5" />
             </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-white">{activeChat?.title ?? DRAFT_CHAT_TITLE}</p>
+              <p className="truncate text-[11px] text-[var(--muted)]">{notebookName}</p>
+            </div>
             <button
               type="button"
-              onClick={onGenerateFlashcards}
-              disabled={!activeChatId || isGeneratingQuiz || isGeneratingFlashcards}
-              className="inline-flex items-center gap-2 rounded-lg border border-[rgba(56,189,248,0.3)] bg-[rgba(56,189,248,0.1)] px-3 py-2 text-sm text-[#d8eeff] hover:bg-[rgba(56,189,248,0.18)] disabled:opacity-60"
+              onClick={() => setDrawer("sources")}
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-[#cbd5e1] transition hover:text-white xl:hidden"
             >
-              <FontAwesomeIcon icon={faClone} className="h-4 w-4" />
-              {isGeneratingFlashcards ? "Generating Flashcards..." : "Generate Flashcards (10)"}
+              <FontAwesomeIcon icon={faFolderOpen} className="h-3 w-3 text-[var(--accent)]" />
+              Materials
+              <span className="rounded-full bg-[rgba(56,189,248,0.16)] px-1.5 text-[10px] text-[#bde8ff]">{sources.length}</span>
             </button>
+          </header>
+
+          <div ref={scrollRef} onScroll={onScroll} className="custom-scroll min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+            {showStart ? (
+              <ChatStart
+                notebookName={notebookName}
+                sourceCount={sources.length}
+                onAddSource={() => openDialog({ type: "addSource" })}
+                onAsk={(text) => void ask(text)}
+                onTool={(kind) => openDialog({ type: "tool", kind })}
+              />
+            ) : (
+              <div className="mx-auto w-full max-w-3xl space-y-5">
+                {loadingMessages && !messages.length && (
+                  <p className="py-10 text-center text-sm text-[var(--muted)]">Loading chat...</p>
+                )}
+                {messages.map((message) =>
+                  message.role === "assistant" ? (
+                    <AssistantBubble
+                      key={message.id}
+                      message={message}
+                      autoOpen={message.id === autoOpenId}
+                      onAddSource={() => openDialog({ type: "addSource" })}
+                    />
+                  ) : (
+                    <UserBubble key={message.id} content={message.content} />
+                  ),
+                )}
+                {showPending && (
+                  <>
+                    <UserBubble content={pending.prompt} />
+                    <PendingBubble text={streamingText} status={PENDING_STATUS[pending.kind]} />
+                  </>
+                )}
+              </div>
+            )}
           </div>
-        </div>
 
-        <div className="max-h-[52vh] space-y-3 overflow-y-auto rounded-xl border border-[var(--border)] bg-[rgba(11,18,32,0.32)] p-3">
-          {messages.length === 0 && <p className="text-sm text-[var(--muted)]">Start asking questions from your uploaded sources.</p>}
-          {messages.map((message) => (
-            <div key={message.id} className={`max-w-[92%] rounded-xl border p-3 text-sm ${message.role === "assistant" ? "border-[rgba(56,189,248,0.22)] bg-[rgba(56,189,248,0.08)]" : "ml-auto border-[var(--border)] bg-[rgba(6,11,18,0.84)]"}`}>
-              <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">{message.role === "assistant" ? "AI" : "You"}</p>
-              {message.role === "assistant"
-                ? <AssistantContent content={message.content} />
-                : <p className="mt-1 whitespace-pre-wrap leading-relaxed">{message.content}</p>}
-              {message.role === "assistant" && message.citations?.length > 0 && (
-                <details className="mt-2 rounded-md border border-[var(--border)] bg-[rgba(11,18,32,0.52)] p-2">
-                  <summary className="cursor-pointer text-xs text-[var(--muted)]">Citations ({message.citations.length})</summary>
-                  <div className="mt-2 space-y-2">
-                    {message.citations.map((citation, idx) => (
-                      <div key={`${message.id}-${idx}`} className="rounded-md border border-[var(--border)] p-2 text-xs text-[var(--muted)]">
-                        <p className="font-medium text-[#d5ecff]">[{idx + 1}] {citation.title}</p>
-                        <p>{citation.module} | {citation.academicYear} | Semester {citation.semester}</p>
-                        <p className="mt-1">{citation.excerpt}</p>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
-          ))}
-          {streamingText && (
-            <div className="rounded-xl border border-[rgba(56,189,248,0.28)] bg-[rgba(56,189,248,0.05)] p-3 text-sm">
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--accent)]">Assistant</p>
-              <p className="mt-1 whitespace-pre-wrap leading-relaxed">
-                {streamingText}
-                <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-[var(--accent)]" />
-              </p>
+          {error && (
+            <div role="alert" className="mx-3 mb-1 flex items-start gap-2.5 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200 sm:mx-4">
+              <FontAwesomeIcon icon={faCircleExclamation} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <p className="min-w-0 flex-1">{error}</p>
+              <button type="button" onClick={() => setError("")} aria-label="Dismiss" className="shrink-0 text-red-200/70 hover:text-white">
+                <FontAwesomeIcon icon={faXmark} className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
-          {((isAsking && !streamingText) || isGeneratingQuiz || isGeneratingFlashcards) && (
-            <p className="text-xs text-[var(--muted)]">
-              {isAsking ? "Generating answer..." : isGeneratingQuiz ? "Generating quiz..." : "Generating flashcards..."}
-            </p>
-          )}
-        </div>
 
-        {error && <p className="text-sm text-red-300">{error}</p>}
-
-        <form className="flex gap-2" onSubmit={onAsk}>
-          <input
-            className="w-full rounded-xl border border-[var(--border)] bg-[rgba(7,13,23,0.86)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-            placeholder="Ask about your uploaded documents..."
+          <Composer
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            required
+            onChange={setPrompt}
+            onSubmit={(text) => void ask(text)}
+            onStop={stop}
+            onTool={(kind) => openDialog({ type: "tool", kind })}
+            busy={busy}
+            canStop={pending?.kind === "ask"}
+            blockedReason={blockedReason}
+            footnote={footnote}
           />
-          <button className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm hover:bg-[#2a4fb5] disabled:opacity-60" type="submit" disabled={isAsking || !activeChatId}>
-            <FontAwesomeIcon icon={faPaperPlane} className="h-4 w-4" />
-            Ask
-          </button>
-        </form>
+        </section>
+
+        <aside className="hidden min-h-0 border-l border-[var(--border)] bg-[rgba(7,13,23,0.35)] xl:block" aria-label="Materials">
+          {sourcesPanel}
+        </aside>
       </div>
 
-      <details className="glass-card p-4">
-        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-[#d8eeff]">
-          <FontAwesomeIcon icon={faBookOpen} className="h-4 w-4 text-[var(--accent)]" />
-          Manage Sources
-        </summary>
+      <Drawer open={drawer === "chats"} onClose={() => setDrawer(null)} side="left" label="Notebook and chats">
+        {sidebar}
+      </Drawer>
+      <Drawer open={drawer === "sources"} onClose={() => setDrawer(null)} side="right" label="Materials">
+        {sourcesPanel}
+      </Drawer>
 
-        <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <form className="space-y-2 rounded-xl border border-[var(--border)] bg-[rgba(11,18,32,0.35)] p-3" onSubmit={onUploadSource}>
-            <input className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.7)] px-3 py-2 text-sm" placeholder="Title" value={sourceTitle} onChange={(e) => setSourceTitle(e.target.value)} required />
-            <input className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.7)] px-3 py-2 text-sm" placeholder="Module" value={sourceModule} onChange={(e) => setSourceModule(e.target.value)} required />
-            <div className="grid grid-cols-2 gap-2">
-              <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.7)] px-3 py-2 text-sm" value={sourceSemester} onChange={(e) => setSourceSemester(Number(e.target.value))}>
-                {semesterOptions.map((item) => <option key={item} value={item}>Sem {item}</option>)}
-              </select>
-              <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.7)] px-3 py-2 text-sm text-[var(--muted)]" value={levelFromSemester(sourceSemester)} readOnly />
-            </div>
-            <textarea className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.7)] px-3 py-2 text-sm" placeholder="Paste source text" rows={4} value={sourceText} onChange={(e) => setSourceText(e.target.value)} />
-            <input className="w-full rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.7)] px-3 py-2 text-sm" type="file" accept=".txt,.md,.csv,.json,.pdf,text/plain,text/markdown,text/csv,application/json,application/pdf" onChange={(e) => setSourceFile(e.target.files?.[0])} />
-            <p className="text-xs text-[var(--muted)]">Supported files: TXT, MD, CSV, JSON, PDF (text-based PDF works best).</p>
-            <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm hover:bg-[#2a4fb5] disabled:opacity-60" type="submit" disabled={isUploading}>
-              <FontAwesomeIcon icon={faUpload} className="h-4 w-4" />
-              {isUploading ? "Indexing..." : "Add Source"}
-            </button>
-          </form>
-
-          <div className="max-h-[34vh] space-y-2 overflow-y-auto rounded-xl border border-[var(--border)] bg-[rgba(11,18,32,0.35)] p-3">
-            {sources.map((source) => (
-              <div key={source.id} className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.45)] p-2 text-xs">
-                <p className="font-medium text-[#d5ecff]">{source.title}</p>
-                <p className="text-[var(--muted)]">{source.module} | {source.academicYear} | Sem {source.semester}</p>
-              </div>
-            ))}
-            {sources.length === 0 && <p className="text-xs text-[var(--muted)]">No sources yet.</p>}
-          </div>
-        </div>
-      </details>
-    </section>
+      {dialog?.type === "newProject" && (
+        <NameDialog
+          key={dialogKey}
+          open
+          title="New notebook"
+          subtitle="Keep each module or exam in its own notebook, with its own materials and chats."
+          label="Notebook name"
+          placeholder="e.g. IN2130 Data Structures"
+          confirmLabel="Create notebook"
+          onSubmit={createProject}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === "renameProject" && (
+        <NameDialog
+          key={dialogKey}
+          open
+          title="Rename notebook"
+          label="Notebook name"
+          initialValue={notebookName}
+          confirmLabel="Save"
+          onSubmit={renameProject}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === "deleteProject" && (
+        <ConfirmDialog
+          key={dialogKey}
+          open
+          title={`Delete "${notebookName}"?`}
+          message={
+            <>
+              This permanently removes the notebook with its {sources.length} material{sources.length === 1 ? "" : "s"} and{" "}
+              {chats.length} chat{chats.length === 1 ? "" : "s"}. This cannot be undone.
+            </>
+          }
+          confirmLabel="Delete notebook"
+          onConfirm={deleteProject}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === "renameChat" && (
+        <NameDialog
+          key={dialogKey}
+          open
+          title="Rename chat"
+          label="Chat name"
+          initialValue={dialog.chat.title}
+          confirmLabel="Save"
+          onSubmit={(title) => renameChat(dialog.chat, title)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === "deleteChat" && (
+        <ConfirmDialog
+          key={dialogKey}
+          open
+          title="Delete this chat?"
+          message={<>&ldquo;{dialog.chat.title}&rdquo; and all its messages, quizzes and flashcards will be removed. Your materials are kept.</>}
+          confirmLabel="Delete chat"
+          onConfirm={() => deleteChat(dialog.chat)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === "deleteSource" && (
+        <ConfirmDialog
+          key={dialogKey}
+          open
+          title="Remove this material?"
+          message={<>The AI will stop using &ldquo;{dialog.source.title}&rdquo; in answers, quizzes and flashcards. Existing chats are kept.</>}
+          confirmLabel="Remove material"
+          onConfirm={() => deleteSource(dialog.source)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.type === "addSource" && (
+        <AddSourceDialog
+          key={dialogKey}
+          open
+          projectId={activeProjectId}
+          projectName={notebookName}
+          defaults={readSourceDefaults(notebookName)}
+          onClose={closeDialog}
+          onAdded={sourceAdded}
+        />
+      )}
+      {dialog?.type === "tool" && (
+        <StudyToolDialog
+          key={dialogKey}
+          open
+          kind={dialog.kind}
+          sources={sources}
+          remaining={usage?.artifact.remaining ?? null}
+          onClose={closeDialog}
+          onCreate={(options) => void generate(dialog.kind, options)}
+        />
+      )}
+    </>
   );
 }
