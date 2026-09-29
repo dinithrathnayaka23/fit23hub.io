@@ -172,7 +172,7 @@ export default function NotificationBell({ admin }: { admin: boolean }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="glass-card absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden p-0 shadow-[0_18px_40px_rgba(5,11,22,0.55)]"
+            className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[rgba(56,189,248,0.3)] bg-[#111827] p-0 shadow-[0_24px_60px_rgba(2,6,16,0.75)]"
           >
             <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2.5">
               <p className="text-sm font-semibold text-white">
