@@ -131,7 +131,7 @@ export default function TopBar({ admin, user, rootHref, currentLabel, currentIco
           {menuOpen && (
             <div
               role="menu"
-              className="glass-card absolute right-0 z-50 mt-2 w-64 overflow-hidden p-0 shadow-[0_18px_40px_rgba(5,11,22,0.55)]"
+              className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-[rgba(56,189,248,0.3)] bg-[var(--popover)] p-0 shadow-[0_24px_60px_rgba(2,6,16,0.75)]"
             >
               <div className="flex items-center gap-3 border-b border-[var(--border)] p-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
