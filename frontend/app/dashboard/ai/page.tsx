@@ -479,10 +479,12 @@ export default function AiPage() {
             <button
               type="button"
               onClick={() => setDrawer("sources")}
+              aria-label={`Materials (${sources.length})`}
               className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-[#cbd5e1] transition hover:text-white xl:hidden"
             >
               <FontAwesomeIcon icon={faFolderOpen} className="h-3 w-3 text-[var(--accent)]" />
-              Materials
+              {/* The word costs the chat title most of its room on a small phone. */}
+              <span className="hidden sm:inline">Materials</span>
               <span className="rounded-full bg-[rgba(56,189,248,0.16)] px-1.5 text-[10px] text-[#bde8ff]">{sources.length}</span>
             </button>
           </header>

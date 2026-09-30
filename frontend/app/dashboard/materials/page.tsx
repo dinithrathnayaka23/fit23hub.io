@@ -307,7 +307,7 @@ export default function MaterialsPage() {
             retrying={loading}
           />
         ) : loading && materials.length === 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }, (_, i) => <CardSkeleton key={i} />)}
           </div>
         ) : materials.length === 0 ? (
@@ -339,7 +339,7 @@ export default function MaterialsPage() {
                 <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-[var(--muted)]">{items.length}</span>
                 <span className="h-px flex-1 bg-[var(--border)]" />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {items.map((item, index) => (
                   <motion.div
                     key={item.id}

@@ -173,9 +173,9 @@ export default function AdminRecordingsPage() {
           <h3 className="text-lg font-semibold">{session.title}</h3>
           <p className="mt-1 text-sm text-[var(--muted)]">{session.module} | {session.academicYear} | Semester {session.semester}</p>
           <p className="mt-1 text-sm text-[var(--muted)]">{session.description || "No description"}</p>
-          <div className="mt-3 flex gap-2">
-            <a href={resolveAssetUrl(session.videoUrl)} target="_blank" rel="noreferrer" className="rounded-lg bg-[var(--primary)] px-3 py-1 text-sm hover:bg-[#2a4fb5]">Watch</a>
-            <button type="button" onClick={() => onDelete(session.id)} className="rounded-lg border border-[var(--border)] px-3 py-1 text-sm text-[var(--muted)] hover:text-white">Delete</button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a href={resolveAssetUrl(session.videoUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg bg-[var(--primary)] px-3 py-2 text-sm hover:bg-[#2a4fb5]">Watch</a>
+            <button type="button" onClick={() => onDelete(session.id)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] hover:text-white">Delete</button>
           </div>
         </article>
       ))}

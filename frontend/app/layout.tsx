@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Poppins, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
@@ -34,6 +34,17 @@ export const metadata: Metadata = {
     description,
     images: ["/og-image.jpg"],
   },
+};
+
+/*
+ * Next injects a default viewport tag, but declaring it here makes the mobile
+ * contract explicit. Zooming is deliberately left enabled: capping the scale
+ * would lock out anyone who needs to pinch in to read.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0b1220",
 };
 
 export default function RootLayout({

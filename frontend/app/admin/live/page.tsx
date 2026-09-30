@@ -140,20 +140,20 @@ export default function AdminLivePage() {
           <p className="mt-1 text-xs text-[var(--muted)]">Status: {session.isLive ? "LIVE" : "OFFLINE"}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <input
-              className="min-w-[220px] flex-1 rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-1 text-sm"
+              className="w-full min-w-0 rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm sm:w-auto sm:min-w-[220px] sm:flex-1"
               placeholder="Recording URL"
               value={recordingDrafts[session.id] || ""}
               onChange={(e) => setRecordingDrafts((prev) => ({ ...prev, [session.id]: e.target.value }))}
             />
-            <button type="button" onClick={() => onSaveRecordingUrl(session.id)} className="rounded-lg border border-[var(--border)] px-3 py-1 text-sm text-[var(--muted)] hover:text-white">Save Recording URL</button>
-            {session.recordingUrl && <a href={session.recordingUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-[var(--border)] px-3 py-1 text-sm text-[var(--muted)] hover:text-white">Open Recording</a>}
+            <button type="button" onClick={() => onSaveRecordingUrl(session.id)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] hover:text-white">Save Recording URL</button>
+            {session.recordingUrl && <a href={session.recordingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] hover:text-white">Open Recording</a>}
           </div>
-          <div className="mt-3 flex gap-2">
-            <button type="button" onClick={() => onToggle(session)} className="rounded-lg bg-[var(--primary)] px-3 py-1 text-sm hover:bg-[#2a4fb5]">
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => onToggle(session)} className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm hover:bg-[#2a4fb5]">
               {session.isLive ? "Stop Live" : "Start Live"}
             </button>
-            <a href={session.streamUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-[var(--border)] px-3 py-1 text-sm text-[var(--muted)] hover:text-white">Open Stream</a>
-            <button type="button" onClick={() => onDelete(session.id)} className="rounded-lg border border-[var(--border)] px-3 py-1 text-sm text-[var(--muted)] hover:text-white">Delete</button>
+            <a href={session.streamUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] hover:text-white">Open Stream</a>
+            <button type="button" onClick={() => onDelete(session.id)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] hover:text-white">Delete</button>
           </div>
         </article>
       ))}
