@@ -226,7 +226,9 @@ export default function UploadMaterialDialog({
       <ModalHeader id="upload-material-title" title={heading} subtitle={subtitle} onClose={close} />
 
       <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col">
-        <fieldset disabled={saving} className="custom-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-5">
+        {/* A fieldset cannot shrink and scroll inside a flex column, so a div owns the scrolling. */}
+        <div className="custom-scroll min-h-0 flex-1 overflow-y-auto">
+        <fieldset disabled={saving} className="m-0 min-w-0 space-y-5 border-0 p-4 sm:p-5">
           {/* 1. What is being shared */}
           <div className="space-y-3">
             <div className="flex gap-1 rounded-xl border border-[var(--border)] bg-[rgba(7,13,23,0.6)] p-1" role="tablist" aria-label="Material source">
@@ -421,9 +423,10 @@ export default function UploadMaterialDialog({
 
           {error && <p role="alert" className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
         </fieldset>
+        </div>
 
         {saving && (
-          <div className="border-t border-[var(--border)] px-4 pt-3 sm:px-5">
+          <div className="shrink-0 border-t border-[var(--border)] bg-[#0b1628] px-4 pt-3 sm:px-5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-white">{progress ? (percent < 100 ? "Uploading..." : "Finishing up...") : "Publishing..."}</span>
               {progress && (
@@ -450,7 +453,7 @@ export default function UploadMaterialDialog({
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] p-3 sm:px-5">
+        <div className={`flex shrink-0 items-center justify-between gap-3 bg-[#0b1628] p-3 sm:px-5 ${saving ? "" : "border-t border-[var(--border)]"}`}>
           <p className={`min-w-0 text-xs ${attempted && missing ? "text-red-300" : "text-[var(--muted)]"}`}>
             {saving ? "Keep this window open until it finishes." : missing}
           </p>
