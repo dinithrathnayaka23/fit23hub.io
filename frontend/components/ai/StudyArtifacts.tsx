@@ -203,7 +203,7 @@ function QuizRunner({ items, onClose }: { items: QuizItem[]; onClose: () => void
 
       <div className="custom-scroll min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
         <p className="text-base font-medium leading-relaxed text-white">{current.question}</p>
-        <div className="mt-4 grid gap-2.5">
+        <div className="mt-4 grid grid-cols-1 gap-2.5">
           {current.options.map((option, i) => {
             const isAnswer = option.key === current.answer;
             const isPicked = option.key === picked;

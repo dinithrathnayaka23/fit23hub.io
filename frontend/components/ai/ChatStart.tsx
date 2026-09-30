@@ -100,7 +100,7 @@ export default function ChatStart({
         </p>
       </div>
 
-      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+      <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {SUGGESTIONS.map((item) => (
           <button
             key={item.label}
@@ -118,7 +118,7 @@ export default function ChatStart({
       </div>
 
       <p className="mt-6 mb-2 text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Or practise</p>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <button
           type="button"
           onClick={() => onTool("quiz")}
