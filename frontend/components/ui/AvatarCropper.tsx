@@ -281,7 +281,7 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
   return createPortal(
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm"
+        className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto bg-[rgba(2,6,14,0.78)] p-4 backdrop-blur-sm"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -291,7 +291,7 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
         aria-labelledby="crop-title"
       >
         <motion.div
-          className="glass-card my-auto w-full max-w-md p-5 sm:p-6"
+          className="my-auto w-full max-w-md rounded-2xl border border-[rgba(56,189,248,0.3)] bg-[linear-gradient(150deg,#08101e,#0c1a30)] p-5 shadow-[0_20px_70px_rgba(0,0,0,0.5)] sm:p-6"
           initial={{ opacity: 0, scale: 0.92, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.92, y: 16 }}
@@ -318,7 +318,7 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
             onPointerUp={endPointer}
             onPointerCancel={endPointer}
             onWheel={onWheel}
-            className="relative mx-auto mt-4 aspect-square w-full max-w-[20rem] touch-none select-none overflow-hidden rounded-xl bg-[rgba(3,8,17,0.7)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(56,189,248,0.7)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--card)]"
+            className="relative mx-auto mt-4 aspect-square w-full max-w-[20rem] touch-none select-none overflow-hidden rounded-xl bg-[#03070f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(56,189,248,0.7)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a1526]"
           >
             <canvas
               ref={canvasRef}
