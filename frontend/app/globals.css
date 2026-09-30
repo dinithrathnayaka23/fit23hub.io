@@ -229,3 +229,61 @@ input[type="file"]::file-selector-button {
 .custom-scroll::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, rgba(125, 225, 255, 0.8), rgba(68, 122, 255, 0.82));
 }
+
+/*
+ * Mobile foundations.
+ *
+ * iOS Safari zooms the whole page in whenever a focused form control renders
+ * below 16px, and this app's inputs are text-sm (14px) almost everywhere. The
+ * user is then left pinching back out on every field. Forcing 16px on small
+ * screens keeps the compact look on desktop and stops the zoom on a phone.
+ * File inputs are excluded because their button is sized by the platform.
+ */
+@media (max-width: 640px) {
+  input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/*
+ * Module codes, email addresses and pasted URLs are unbroken strings that can
+ * be wider than a phone. Let them break rather than push the page sideways.
+ */
+body {
+  overflow-wrap: break-word;
+}
+
+/*
+ * Scrollbar gutters are styled for the desktop pointer; on a touch screen the
+ * overlay scrollbar is what actually shows, and a 10px track steals width from
+ * the horizontal filter strips.
+ */
+@media (pointer: coarse) {
+  .custom-scroll::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}
+
+/*
+ * Touch targets.
+ *
+ * Much of the chrome is sized for a mouse: filter pills, card actions and row
+ * buttons land around 26-30px tall, which is fiddly under a thumb. Lift
+ * anything shaped like a button to a comfortable minimum, but only on a touch
+ * pointer, so the desktop layout keeps its density. Plain inline text links
+ * are left alone - min-height has no effect on an inline box, so a link inside
+ * a sentence is unaffected.
+ */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a[class*="rounded-lg"],
+  a[class*="rounded-xl"],
+  a[class*="rounded-md"],
+  a[class*="rounded-full"] {
+    min-height: 2.25rem;
+  }
+}
