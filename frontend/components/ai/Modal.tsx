@@ -73,7 +73,7 @@ export function Modal({
           aria-labelledby={labelledBy}
         >
           <motion.div
-            className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-[rgba(56,189,248,0.3)] bg-[linear-gradient(150deg,rgba(8,16,30,0.98),rgba(12,26,48,0.98))] shadow-[0_-10px_60px_rgba(0,0,0,0.5)] sm:max-h-[86vh] sm:rounded-2xl sm:shadow-[0_20px_70px_rgba(0,0,0,0.5)] ${SIZES[size]}`}
+            className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-[rgba(56,189,248,0.3)] bg-[linear-gradient(150deg,#08101e,#0c1a30)] shadow-[0_-10px_60px_rgba(0,0,0,0.5)] sm:max-h-[86vh] sm:rounded-2xl sm:shadow-[0_20px_70px_rgba(0,0,0,0.5)] ${SIZES[size]}`}
             initial={{ opacity: 0, y: 40, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.98 }}

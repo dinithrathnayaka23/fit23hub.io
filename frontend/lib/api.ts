@@ -138,6 +138,71 @@ async function request<T>(
   return data as T;
 }
 
+export type UploadProgress = { loaded: number; total: number };
+
+/**
+ * A multipart POST over XMLHttpRequest, because fetch cannot report upload
+ * progress. Credentials, the CSRF echo and error messages match `request`, and
+ * aborting the signal rejects with an AbortError the caller can ignore.
+ */
+function uploadWithProgress<T>(
+  path: string,
+  body: FormData,
+  { onProgress, signal }: { onProgress?: (progress: UploadProgress) => void; signal?: AbortSignal } = {},
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}${path}`);
+    xhr.withCredentials = true;
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
+    buildHeaders({ method: "POST", body }).forEach((value, key) => xhr.setRequestHeader(key, value));
+
+    if (onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress({ loaded: event.loaded, total: event.total });
+      };
+    }
+
+    const onAbort = () => xhr.abort();
+    signal?.addEventListener("abort", onAbort);
+    const settle = () => signal?.removeEventListener("abort", onAbort);
+
+    xhr.onload = () => {
+      settle();
+      let data: Record<string, unknown> = {};
+      try {
+        data = JSON.parse(xhr.responseText || "{}");
+      } catch {
+        // Non-JSON bodies (a proxy's HTML error page) fall through to the status message.
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data as T);
+        return;
+      }
+      const message = typeof data.message === "string" ? data.message : messageForStatus(xhr.status);
+      reject(new ApiError(message, xhr.status, data));
+    };
+    xhr.onerror = () => {
+      settle();
+      reject(new ApiError(connectionMessage(false), 0, { offline: true }));
+    };
+    xhr.ontimeout = () => {
+      settle();
+      reject(new ApiError(connectionMessage(true), 0, { offline: true }));
+    };
+    xhr.onabort = () => {
+      settle();
+      reject(new DOMException("Upload cancelled", "AbortError"));
+    };
+
+    if (signal?.aborted) {
+      xhr.abort();
+      return;
+    }
+    xhr.send(body);
+  });
+}
+
 export const api = {
   async register(input: { fullName: string; indexNo: string; email: string; password: string }) {
     return request<{
@@ -304,7 +369,7 @@ export const api = {
     category: MaterialCategory;
     externalUrl?: string;
     file?: File;
-  }) {
+  }, options?: { onProgress?: (progress: UploadProgress) => void; signal?: AbortSignal }) {
     const formData = new FormData();
     formData.append("title", payload.title);
     formData.append("module", payload.module);
@@ -315,10 +380,7 @@ export const api = {
     if (payload.externalUrl) formData.append("externalUrl", payload.externalUrl);
     if (payload.file) formData.append("file", payload.file);
 
-    return request<{ material: Material }>("/materials", {
-      method: "POST",
-      body: formData,
-    });
+    return uploadWithProgress<{ material: Material }>("/materials", formData, options);
   },
 
   async deleteMaterial(id: string) {

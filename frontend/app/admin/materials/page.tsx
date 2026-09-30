@@ -1,24 +1,14 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBoxArchive, faRotateLeft, faTrashCan } from "@fortawesome/free-solid-svg-icons";
+import { faBoxArchive, faCloudArrowUp, faRotateLeft, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import MaterialCard from "@/components/cards/MaterialCard";
+import UploadMaterialDialog, { type MaterialDefaults } from "@/components/materials/UploadMaterialDialog";
 import { api } from "@/lib/api";
 import { getStoredUser, hasSession } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
-import type { Material, MaterialCategory } from "@/lib/types";
-
-const categories: { value: MaterialCategory; label: string }[] = [
-  { value: "NOTES", label: "Notes" },
-  { value: "LECTURE_SLIDES", label: "Lecture slides" },
-  { value: "LAB_SHEETS", label: "Lab sheets" },
-  { value: "TUTORIALS", label: "Tutorials" },
-  { value: "PAPERS_AND_ANSWERS", label: "Papers and Answers" },
-];
-
-const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
-const levelFromSemester = (semester: number) => `Level ${Math.ceil(semester / 2)}`;
+import type { Material } from "@/lib/types";
 
 const formatArchivedAt = (value?: string | null) =>
   value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
@@ -27,13 +17,10 @@ export default function AdminMaterialsPage() {
   const [view, setView] = useState<"active" | "archived">("active");
   const [materials, setMaterials] = useState<Material[]>([]);
   const [archived, setArchived] = useState<Material[]>([]);
-  const [title, setTitle] = useState("");
-  const [module, setModule] = useState("");
-  const [semester, setSemester] = useState(1);
-  const [description, setDescription] = useState("");
-  const [externalUrl, setExternalUrl] = useState("");
-  const [category, setCategory] = useState<MaterialCategory>("NOTES");
-  const [file, setFile] = useState<File | undefined>(undefined);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadKey, setUploadKey] = useState(0);
+  const [lastUsed, setLastUsed] = useState<MaterialDefaults>({ module: "", semester: 1, category: "NOTES" });
+  const [justAddedId, setJustAddedId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyId, setBusyId] = useState("");
@@ -81,31 +68,18 @@ export default function AdminMaterialsPage() {
     }
   };
 
-  const onCreate = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!signedIn) return;
+  const openUpload = () => {
+    setUploadKey((key) => key + 1);
+    setUploadOpen(true);
+  };
 
-    try {
-      await api.uploadMaterial({
-        title,
-        module,
-        semester,
-        academicYear: levelFromSemester(semester),
-        description,
-        category,
-        externalUrl,
-        file,
-      });
-      setTitle("");
-      setModule("");
-      setSemester(1);
-      setDescription("");
-      setExternalUrl("");
-      setFile(undefined);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add material");
-    }
+  const onUploaded = (material: Material, used: MaterialDefaults) => {
+    setLastUsed(used);
+    setJustAddedId(material.id);
+    setView("active");
+    setError("");
+    setNotice(`"${material.title}" published.`);
+    refresh().catch((err) => setError(err instanceof Error ? err.message : "Could not refresh the list"));
   };
 
   const onArchive = (item: Material) =>
@@ -126,37 +100,31 @@ export default function AdminMaterialsPage() {
 
   return (
     <section className="space-y-4">
-      <form onSubmit={onCreate} className="glass-card grid grid-cols-1 gap-3 p-4 md:grid-cols-2 md:p-5">
-        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Material title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Module (e.g. IN2130)" value={module} onChange={(e) => setModule(e.target.value)} required />
-        <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" value={semester} onChange={(e) => setSemester(Number(e.target.value))}>
-          {semesterOptions.map((item) => <option key={item} value={item}>Semester {item}</option>)}
-        </select>
-        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm text-[var(--muted)]" value={levelFromSemester(semester)} readOnly />
-        <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" value={category} onChange={(e) => setCategory(e.target.value as MaterialCategory)}>
-          {categories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-        </select>
-        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="External URL (optional)" value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} />
-        <textarea className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm md:col-span-2" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm md:col-span-2" type="file" onChange={(e) => setFile(e.target.files?.[0])} />
-        <button className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm hover:bg-[#2a4fb5] md:col-span-2" type="submit">Add Material</button>
-      </form>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {(["active", "archived"] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setView(key)}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-              view === key
-                ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.12)] text-[#c8eeff]"
-                : "border-[var(--border)] text-[var(--muted)] hover:text-white"
-            }`}
-          >
-            {key === "active" ? `Published (${materials.length})` : `Archive (${archived.length})`}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {(["active", "archived"] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setView(key)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                view === key
+                  ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.12)] text-[#c8eeff]"
+                  : "border-[var(--border)] text-[var(--muted)] hover:text-white"
+              }`}
+            >
+              {key === "active" ? `Published (${materials.length})` : `Archive (${archived.length})`}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={openUpload}
+          className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#2a4fb5]"
+        >
+          <FontAwesomeIcon icon={faCloudArrowUp} className="h-3.5 w-3.5" />
+          Publish material
+        </button>
       </div>
 
       {error && <p className="text-sm text-red-300">{error}</p>}
@@ -182,55 +150,69 @@ export default function AdminMaterialsPage() {
           title={view === "active" ? "Nothing published yet" : "The archive is empty"}
           hint={
             view === "active"
-              ? "Use the form above to share the first material with the batch."
+              ? "Use Publish material to share the first material with the batch."
               : "Material you archive lands here and can be restored at any time."
           }
         />
       ) : (
-        list.map((item) => (
-          <div key={item.id} className="space-y-2">
-            <MaterialCard item={item} />
-            {view === "active" ? (
-              <button
-                type="button"
-                onClick={() => onArchive(item)}
-                disabled={busyId === item.id}
-                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-1 text-xs text-[var(--muted)] transition hover:text-white disabled:opacity-60"
-              >
-                <FontAwesomeIcon icon={faBoxArchive} className="h-3 w-3" />
-                Archive
-              </button>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onRestore(item)}
-                  disabled={busyId === item.id}
-                  className="inline-flex items-center gap-2 rounded-lg border border-[rgba(52,211,153,0.4)] px-3 py-1 text-xs text-emerald-200 transition hover:bg-[rgba(52,211,153,0.12)] disabled:opacity-60"
-                >
-                  <FontAwesomeIcon icon={faRotateLeft} className="h-3 w-3" />
-                  Restore
-                </button>
-                {isSuperAdmin && (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {list.map((item) => (
+            <MaterialCard
+              key={item.id}
+              item={item}
+              highlight={item.id === justAddedId}
+              footer={view === "active" ? (
                   <button
                     type="button"
-                    onClick={() => onPurge(item)}
+                    onClick={() => onArchive(item)}
                     disabled={busyId === item.id}
-                    className="inline-flex items-center gap-2 rounded-lg border border-red-400/40 px-3 py-1 text-xs text-red-300 transition hover:bg-red-500/10 disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-1 text-xs text-[var(--muted)] transition hover:text-white disabled:opacity-60"
                   >
-                    <FontAwesomeIcon icon={faTrashCan} className="h-3 w-3" />
-                    Delete permanently
+                    <FontAwesomeIcon icon={faBoxArchive} className="h-3 w-3" />
+                    Archive
                   </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onRestore(item)}
+                      disabled={busyId === item.id}
+                      className="inline-flex items-center gap-2 rounded-lg border border-[rgba(52,211,153,0.4)] px-3 py-1 text-xs text-emerald-200 transition hover:bg-[rgba(52,211,153,0.12)] disabled:opacity-60"
+                    >
+                      <FontAwesomeIcon icon={faRotateLeft} className="h-3 w-3" />
+                      Restore
+                    </button>
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => onPurge(item)}
+                        disabled={busyId === item.id}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-400/40 px-3 py-1 text-xs text-red-300 transition hover:bg-red-500/10 disabled:opacity-60"
+                      >
+                        <FontAwesomeIcon icon={faTrashCan} className="h-3 w-3" />
+                        Delete permanently
+                      </button>
+                    )}
+                    <span className="text-xs text-[var(--muted)]">
+                      Archived {formatArchivedAt(item.deletedAt)}
+                      {item.deletedBy ? ` by ${item.deletedBy.fullName}` : ""}
+                    </span>
+                  </div>
                 )}
-                <span className="text-xs text-[var(--muted)]">
-                  Archived {formatArchivedAt(item.deletedAt)}
-                  {item.deletedBy ? ` by ${item.deletedBy.fullName}` : ""}
-                </span>
-              </div>
-            )}
-          </div>
-        ))
+            />
+          ))}
+        </div>
       )}
+
+      <UploadMaterialDialog
+        key={uploadKey}
+        open={uploadOpen}
+        defaults={lastUsed}
+        title="Publish a material"
+        subtitle="Goes straight into the library, and every student is notified."
+        onClose={() => setUploadOpen(false)}
+        onUploaded={onUploaded}
+      />
     </section>
   );
 }
