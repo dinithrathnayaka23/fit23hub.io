@@ -172,7 +172,14 @@ export default function NotificationBell({ admin }: { admin: boolean }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[rgba(56,189,248,0.3)] bg-[var(--popover)] p-0 shadow-[0_24px_60px_rgba(2,6,16,0.75)]"
+            /*
+             * The bell sits ~60px in from the screen edge (avatar, gap and the
+             * bar's padding sit to its right), so a panel anchored to the bell
+             * and sized off the viewport width hangs off the left on a phone.
+             * Below sm it is pinned to the screen instead, with an even gutter
+             * on both sides; from sm up it goes back to a dropdown on the bell.
+             */
+            className="fixed inset-x-2 top-[4.25rem] z-50 ml-auto max-w-[22rem] overflow-hidden rounded-2xl border border-[rgba(56,189,248,0.3)] bg-[var(--popover)] p-0 shadow-[0_24px_60px_rgba(2,6,16,0.75)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:ml-0 sm:mt-2 sm:w-[22rem] sm:max-w-none"
           >
             <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2.5">
               <p className="text-sm font-semibold text-white">
@@ -191,7 +198,9 @@ export default function NotificationBell({ admin }: { admin: boolean }) {
               )}
             </div>
 
-            <div className="custom-scroll max-h-[22rem] overflow-y-auto">
+            {/* Keeps the list inside the screen on a short phone, where a fixed
+                22rem would run past the bottom with no way to scroll to it. */}
+            <div className="custom-scroll max-h-[min(22rem,calc(100dvh-11rem))] overflow-y-auto sm:max-h-[22rem]">
               {loading && items.length === 0 && (
                 <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">Loading...</p>
               )}
