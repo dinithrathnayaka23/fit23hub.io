@@ -291,7 +291,7 @@ export default function AvatarCropper({ file, onCancel, onConfirm, onFallback }:
         aria-labelledby="crop-title"
       >
         <motion.div
-          className="my-auto w-full max-w-md rounded-2xl border border-[rgba(56,189,248,0.3)] bg-[linear-gradient(150deg,#08101e,#0c1a30)] p-5 shadow-[0_20px_70px_rgba(0,0,0,0.5)] sm:p-6"
+          className="my-auto w-full max-w-md rounded-2xl border border-[rgba(56,189,248,0.3)] bg-[var(--popover)] p-5 shadow-[0_20px_70px_rgba(2,6,16,0.75)] sm:p-6"
           initial={{ opacity: 0, scale: 0.92, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.92, y: 16 }}

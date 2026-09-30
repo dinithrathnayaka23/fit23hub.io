@@ -4,6 +4,12 @@
   --bg: #0b1220;
   --bg-soft: #111827;
   --card: rgba(17, 24, 39, 0.74);
+  /*
+   * The opaque form of --card, for anything that floats over the page:
+   * dialogs, dropdowns and popovers. A panel you can see the page through
+   * is hard to read, so these never use the translucent --card.
+   */
+  --popover: #111827;
   --primary: #1e3a8a;
   --accent: #38bdf8;
   --text: #e5e7eb;
