@@ -276,3 +276,53 @@ describe("profile photo validation", () => {
     expect(Date.now() - started).toBeLessThan(5000);
   });
 });
+
+describe("admin announcement tabs", () => {
+  it("splits published and draft notices server-side and counts every tab", async () => {
+    const admin = await track({ role: "ADMIN" });
+    const session = await loginAs(admin.email);
+    const stamp = Date.now();
+
+    const draft = await session.fetchAs("/announcements/admin", {
+      method: "POST",
+      body: JSON.stringify({ title: `Tab draft ${stamp}`, body: "Still a draft" }),
+    });
+    const live = await session.fetchAs("/announcements/admin", {
+      method: "POST",
+      body: JSON.stringify({ title: `Tab live ${stamp}`, body: "Already out", publish: true }),
+    });
+    const draftId = draft.body.announcement.id;
+    const liveId = live.body.announcement.id;
+
+    try {
+      const drafts = await session.fetchAs("/announcements/admin/all?status=draft&pageSize=50");
+      expect(drafts.status).toBe(200);
+      expect(drafts.body.announcements.every((a) => a.publishedAt === null)).toBe(true);
+      expect(drafts.body.announcements.some((a) => a.id === draftId)).toBe(true);
+      expect(drafts.body.announcements.some((a) => a.id === liveId)).toBe(false);
+
+      const published = await session.fetchAs("/announcements/admin/all?status=published&pageSize=50");
+      expect(published.body.announcements.every((a) => a.publishedAt !== null)).toBe(true);
+      expect(published.body.announcements.some((a) => a.id === liveId)).toBe(true);
+      expect(published.body.announcements.some((a) => a.id === draftId)).toBe(false);
+
+      // The tab badges read these, so they must be whole-table totals, not page sizes.
+      const [publishedTotal, draftTotal, archivedTotal] = await Promise.all([
+        prisma.announcement.count({ where: { deletedAt: null, publishedAt: { not: null } } }),
+        prisma.announcement.count({ where: { deletedAt: null, publishedAt: null } }),
+        prisma.announcement.count({ where: { deletedAt: { not: null } } }),
+      ]);
+      expect(drafts.body.counts).toEqual({ published: publishedTotal, drafts: draftTotal, archived: archivedTotal });
+      expect(drafts.body.pagination.total).toBe(draftTotal);
+      expect(published.body.pagination.total).toBe(publishedTotal);
+
+      // Without a status the endpoint keeps its old behaviour: both kinds together.
+      const both = await session.fetchAs("/announcements/admin/all?pageSize=50");
+      expect(both.body.announcements.some((a) => a.id === draftId)).toBe(true);
+      expect(both.body.announcements.some((a) => a.id === liveId)).toBe(true);
+    } finally {
+      await prisma.announcementAck.deleteMany({ where: { announcementId: { in: [draftId, liveId] } } });
+      await prisma.announcement.deleteMany({ where: { id: { in: [draftId, liveId] } } });
+    }
+  });
+});
