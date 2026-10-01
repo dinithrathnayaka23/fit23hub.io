@@ -1,14 +1,16 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { api, resolveAssetUrl } from "@/lib/api";
+import { api, resolveAssetUrl, type PaginationMeta } from "@/lib/api";
 import { hasSession } from "@/lib/auth";
+import Pagination, { clampPage } from "@/components/ui/Pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { RecordedSession } from "@/lib/types";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
 const MAX_RECORDING_BYTES = 3 * 1024 * 1024 * 1024;
 const levelFromSemester = (semester: number) => `Level ${Math.ceil(semester / 2)}`;
+const PAGE_SIZE = 20;
 
 function isMp4File(file: File) {
   if (file.type === "video/mp4" || file.type === "application/mp4") return true;
@@ -28,19 +30,34 @@ export default function AdminRecordingsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null);
 
+  const fetchPage = useCallback((target: number) => api.getRecordedSessions({ page: target, pageSize: PAGE_SIZE }), []);
+
+  /** Applies a fetched page; state is only ever set here, inside a promise callback. */
+  const applyPage = useCallback((target: number, result: Awaited<ReturnType<typeof api.getRecordedSessions>>) => {
+    // A delete can leave the current page past the end; the page change refetches.
+    const valid = clampPage(target, result.pagination);
+    if (valid !== target) {
+      setPage(valid);
+      return;
+    }
+    setSessions(result.sessions);
+    setPagination(result.pagination);
+  }, []);
+
+  // Loading starts true, and the handlers below set it before a refetch, so the
+  // effect itself never sets state synchronously.
   const reload = useCallback(() => {
     if (!signedIn) return;
 
-    setLoading(true);
-    api.getRecordedSessions()
-      .then((result) => {
-        setSessions(result.sessions);
-        setLoadError(null);
-      })
+    fetchPage(page)
+      .then((result) => applyPage(page, result))
+      .then(() => setLoadError(null))
       .catch((err) => setLoadError(err))
       .finally(() => setLoading(false));
-  }, [signedIn]);
+  }, [signedIn, page, fetchPage, applyPage]);
 
   useEffect(() => {
     reload();
@@ -48,8 +65,7 @@ export default function AdminRecordingsPage() {
 
   const refreshSessions = async () => {
     if (!signedIn) return;
-    const result = await api.getRecordedSessions();
-    setSessions(result.sessions);
+    applyPage(page, await fetchPage(page));
   };
 
   const onCreate = async (event: FormEvent) => {
@@ -88,7 +104,9 @@ export default function AdminRecordingsPage() {
       setDescription("");
       setVideoUrl("");
       setFile(undefined);
-      await refreshSessions();
+      // Newest first, so the recording just added is on page 1.
+      if (page !== 1) setPage(1);
+      else await refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add recording");
     } finally {
@@ -156,7 +174,7 @@ export default function AdminRecordingsPage() {
         <ErrorState
           error={loadError}
           fallback="We could not load the recordings."
-          onRetry={reload}
+          onRetry={() => { setLoading(true); reload(); }}
           retrying={loading}
         />
       ) : loading && sessions.length === 0 ? (
@@ -179,6 +197,8 @@ export default function AdminRecordingsPage() {
           </div>
         </article>
       ))}
+
+      {!loadError && <Pagination pagination={pagination} onPageChange={(next) => { setLoading(true); setPage(next); }} busy={loading} noun="recordings" />}
     </section>
   );
 }

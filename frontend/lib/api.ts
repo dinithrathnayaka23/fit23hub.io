@@ -13,7 +13,7 @@ export type AnnouncementInput = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-type PaginationMeta = { page: number; pageSize: number; total: number; totalPages: number };
+export type PaginationMeta = { page: number; pageSize: number; total: number; totalPages: number };
 
 export class ApiError extends Error {
   status: number;
@@ -435,13 +435,24 @@ export const api = {
     );
   },
 
-  async adminAnnouncements(query?: { archived?: boolean; page?: number; pageSize?: number }) {
+  async adminAnnouncements(query?: {
+    archived?: boolean;
+    status?: "published" | "draft";
+    page?: number;
+    pageSize?: number;
+  }) {
     const params = new URLSearchParams();
     if (query?.archived) params.set("archived", "true");
+    if (query?.status) params.set("status", query.status);
     if (query?.page) params.set("page", String(query.page));
     if (query?.pageSize) params.set("pageSize", String(query.pageSize));
     const suffix = params.toString() ? `?${params.toString()}` : "";
-    return request<{ announcements: Announcement[]; audience: number; pagination: PaginationMeta }>(
+    return request<{
+      announcements: Announcement[];
+      audience: number;
+      counts: { published: number; drafts: number; archived: number };
+      pagination: PaginationMeta;
+    }>(
       `/announcements/admin/all${suffix}`,
       {},
     );

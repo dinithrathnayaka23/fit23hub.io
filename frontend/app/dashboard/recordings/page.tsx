@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, resolveAssetUrl } from "@/lib/api";
+import { api, resolveAssetUrl, type PaginationMeta } from "@/lib/api";
 import { hasSession } from "@/lib/auth";
+import Pagination from "@/components/ui/Pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { RecordedSession } from "@/lib/types";
 
@@ -10,6 +11,7 @@ const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
 const levelOptions = ["Level 1", "Level 2", "Level 3", "Level 4"];
 const levelFromSemester = (semester: number) => `Level ${Math.ceil(semester / 2)}`;
 const videoExtensionRegex = /\.(mp4|webm|ogg)(\?|#|$)/i;
+const PAGE_SIZE = 12;
 
 function toEmbedUrl(url: string) {
   try {
@@ -57,6 +59,8 @@ export default function RecordingsPage() {
   const [moduleFilter, setModuleFilter] = useState("");
   const [semesterFilter, setSemesterFilter] = useState(0);
   const [academicYearFilter, setAcademicYearFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
 
@@ -71,15 +75,18 @@ export default function RecordingsPage() {
         module: moduleFilter || undefined,
         semester: semesterFilter || undefined,
         academicYear: academicYearFilter || undefined,
+        page,
+        pageSize: PAGE_SIZE,
       });
       setSessions(result.sessions);
+      setPagination(result.pagination);
       setError(null);
     } catch (err) {
       setError(err);
     } finally {
       setLoading(false);
     }
-  }, [signedIn, moduleFilter, semesterFilter, academicYearFilter]);
+  }, [signedIn, moduleFilter, semesterFilter, academicYearFilter, page]);
 
   useEffect(() => {
     load();
@@ -94,7 +101,9 @@ export default function RecordingsPage() {
     }, {});
   }, [sessions]);
 
+  // Any filter change starts the results over from the first page.
   const onSemesterFilterChange = (semester: number) => {
+    setPage(1);
     setSemesterFilter(semester);
     if (semester > 0) {
       setAcademicYearFilter(levelFromSemester(semester));
@@ -104,6 +113,7 @@ export default function RecordingsPage() {
   };
 
   const onLevelFilterChange = (level: string) => {
+    setPage(1);
     setAcademicYearFilter(level);
     if (semesterFilter > 0 && level && levelFromSemester(semesterFilter) !== level) {
       setSemesterFilter(0);
@@ -113,7 +123,7 @@ export default function RecordingsPage() {
   return (
     <section className="space-y-4">
       <div className="glass-card grid grid-cols-1 gap-3 p-4 md:grid-cols-3">
-        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Filter module" value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)} />
+        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Filter module" value={moduleFilter} onChange={(e) => { setPage(1); setModuleFilter(e.target.value); }} />
         <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" value={semesterFilter} onChange={(e) => onSemesterFilterChange(Number(e.target.value))}>
           <option value={0}>All Semesters</option>
           {semesterOptions.map((item) => <option key={item} value={item}>Semester {item}</option>)}
@@ -188,6 +198,8 @@ export default function RecordingsPage() {
           }
         />
       )}
+
+      {!error && <Pagination pagination={pagination} onPageChange={setPage} busy={loading} noun="recordings" />}
     </section>
   );
 }

@@ -192,9 +192,21 @@ router.get("/admin/all", ...requireAdmin, async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(req.query.pageSize) || DEFAULT_PAGE_SIZE));
   const archived = String(req.query.archived || "") === "true";
-  const where = { deletedAt: archived ? { not: null } : null };
+  // Splits the live set into its Published and Drafts tabs server-side, so each
+  // tab paginates on its own. Omitted, it returns both, as before.
+  const status = String(req.query.status || "");
+  const notArchived = { deletedAt: null };
+  const published = { ...notArchived, publishedAt: { not: null } };
+  const drafts = { ...notArchived, publishedAt: null };
+  const where = archived
+    ? { deletedAt: { not: null } }
+    : status === "published"
+      ? published
+      : status === "draft"
+        ? drafts
+        : notArchived;
 
-  const [total, audience, rows] = await Promise.all([
+  const [total, audience, rows, publishedCount, draftCount, archivedCount] = await Promise.all([
     prisma.announcement.count({ where }),
     prisma.user.count({ where: studentAudienceWhere }),
     prisma.announcement.findMany({
@@ -208,6 +220,10 @@ router.get("/admin/all", ...requireAdmin, async (req, res) => {
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
+    // Tab badges need every bucket's size, not just the page being shown.
+    prisma.announcement.count({ where: published }),
+    prisma.announcement.count({ where: drafts }),
+    prisma.announcement.count({ where: { deletedAt: { not: null } } }),
   ]);
 
   return res.json({
@@ -216,6 +232,7 @@ router.get("/admin/all", ...requireAdmin, async (req, res) => {
       acknowledgedCount: _count.acknowledgements,
     })),
     audience,
+    counts: { published: publishedCount, drafts: draftCount, archived: archivedCount },
     pagination: {
       page,
       pageSize,

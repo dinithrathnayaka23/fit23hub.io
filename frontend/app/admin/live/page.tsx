@@ -1,13 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { api, type PaginationMeta } from "@/lib/api";
 import { hasSession } from "@/lib/auth";
+import Pagination, { clampPage } from "@/components/ui/Pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { LiveSession } from "@/lib/types";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
 const levelFromSemester = (semester: number) => `Level ${Math.ceil(semester / 2)}`;
+const PAGE_SIZE = 20;
 
 export default function AdminLivePage() {
   const signedIn = useMemo(() => hasSession(), []);
@@ -23,31 +25,45 @@ export default function AdminLivePage() {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
-  // Bumped by the retry button to re-run the load effect.
-  const [reloadKey, setReloadKey] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null);
 
-  useEffect(() => {
-    if (!signedIn) return;
+  const fetchPage = useCallback((target: number) => api.getLiveSessions({ page: target, pageSize: PAGE_SIZE }), []);
 
-    api.getLiveSessions()
-      .then((result) => {
-        setSessions(result.sessions);
-        setRecordingDrafts(
-          Object.fromEntries(result.sessions.map((item) => [item.id, item.recordingUrl || ""])),
-        );
-      })
-      .then(() => setLoadError(null))
-      .catch((err) => setLoadError(err))
-      .finally(() => setLoading(false));
-  }, [signedIn, reloadKey]);
-
-  const refreshSessions = async () => {
-    if (!signedIn) return;
-    const result = await api.getLiveSessions();
+  /** Applies a fetched page; state is only ever set here, inside a promise callback. */
+  const applyPage = useCallback((target: number, result: Awaited<ReturnType<typeof api.getLiveSessions>>) => {
+    // A delete can leave the current page past the end; the page change refetches.
+    const valid = clampPage(target, result.pagination);
+    if (valid !== target) {
+      setPage(valid);
+      return;
+    }
     setSessions(result.sessions);
+    setPagination(result.pagination);
     setRecordingDrafts(
       Object.fromEntries(result.sessions.map((item) => [item.id, item.recordingUrl || ""])),
     );
+  }, []);
+
+  // Loading starts true, and the handlers below set it before a refetch, so the
+  // effect itself never sets state synchronously.
+  const reload = useCallback(() => {
+    if (!signedIn) return;
+
+    fetchPage(page)
+      .then((result) => applyPage(page, result))
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(err))
+      .finally(() => setLoading(false));
+  }, [signedIn, page, fetchPage, applyPage]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const refreshSessions = async () => {
+    if (!signedIn) return;
+    applyPage(page, await fetchPage(page));
   };
 
   const onCreate = async (event: FormEvent) => {
@@ -119,7 +135,7 @@ export default function AdminLivePage() {
         <ErrorState
           error={loadError}
           fallback="We could not load the live sessions."
-          onRetry={() => setReloadKey((key) => key + 1)}
+          onRetry={() => { setLoading(true); reload(); }}
           retrying={loading}
         />
       ) : loading && sessions.length === 0 ? (
@@ -157,6 +173,8 @@ export default function AdminLivePage() {
           </div>
         </article>
       ))}
+
+      {!loadError && <Pagination pagination={pagination} onPageChange={(next) => { setLoading(true); setPage(next); }} busy={loading} noun="sessions" />}
     </section>
   );
 }

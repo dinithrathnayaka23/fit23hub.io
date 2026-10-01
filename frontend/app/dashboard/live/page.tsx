@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, type PaginationMeta } from "@/lib/api";
 import { hasSession } from "@/lib/auth";
+import Pagination from "@/components/ui/Pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { LiveSession } from "@/lib/types";
 
 const semesterOptions = Array.from({ length: 8 }, (_, i) => i + 1);
 const levelOptions = ["Level 1", "Level 2", "Level 3", "Level 4"];
 const levelFromSemester = (semester: number) => `Level ${Math.ceil(semester / 2)}`;
+const PAGE_SIZE = 12;
 const formatCountdown = (target: string, now: number) => {
   const diff = new Date(target).getTime() - now;
   if (diff <= 0) return "Starting now";
@@ -27,6 +29,8 @@ export default function LivePage() {
   const [moduleFilter, setModuleFilter] = useState("");
   const [semesterFilter, setSemesterFilter] = useState(0);
   const [academicYearFilter, setAcademicYearFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState<number | null>(null);
@@ -44,8 +48,11 @@ export default function LivePage() {
           module: moduleFilter || undefined,
           semester: semesterFilter || undefined,
           academicYear: academicYearFilter || undefined,
+          page,
+          pageSize: PAGE_SIZE,
         });
         setSessions(result.sessions);
+        setPagination(result.pagination);
         setError(null);
       } catch (err) {
         setError(err);
@@ -66,7 +73,7 @@ export default function LivePage() {
       clearTimeout(initial);
       clearInterval(timer);
     };
-  }, [signedIn, moduleFilter, semesterFilter, academicYearFilter]);
+  }, [signedIn, moduleFilter, semesterFilter, academicYearFilter, page]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
@@ -82,7 +89,9 @@ export default function LivePage() {
     }, {});
   }, [sessions]);
 
+  // Any filter change starts the results over from the first page.
   const onSemesterFilterChange = (semester: number) => {
+    setPage(1);
     setSemesterFilter(semester);
     if (semester > 0) {
       setAcademicYearFilter(levelFromSemester(semester));
@@ -92,6 +101,7 @@ export default function LivePage() {
   };
 
   const onLevelFilterChange = (level: string) => {
+    setPage(1);
     setAcademicYearFilter(level);
     if (semesterFilter > 0 && level && levelFromSemester(semesterFilter) !== level) {
       setSemesterFilter(0);
@@ -101,7 +111,7 @@ export default function LivePage() {
   return (
     <section className="space-y-4">
       <div className="glass-card grid grid-cols-1 gap-3 p-4 md:grid-cols-3">
-        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Filter module" value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)} />
+        <input className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" placeholder="Filter module" value={moduleFilter} onChange={(e) => { setPage(1); setModuleFilter(e.target.value); }} />
         <select className="rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-2 text-sm" value={semesterFilter} onChange={(e) => onSemesterFilterChange(Number(e.target.value))}>
           <option value={0}>All Semesters</option>
           {semesterOptions.map((item) => <option key={item} value={item}>Semester {item}</option>)}
@@ -182,6 +192,8 @@ export default function LivePage() {
           }
         />
       )}
+
+      {sessions.length > 0 && <Pagination pagination={pagination} onPageChange={setPage} busy={loading} noun="sessions" />}
     </section>
   );
 }

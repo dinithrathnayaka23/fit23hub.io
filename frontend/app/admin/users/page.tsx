@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { api } from "@/lib/api";
+import { api, type PaginationMeta } from "@/lib/api";
 import { getStoredUser, hasSession } from "@/lib/auth";
+import Pagination, { clampPage } from "@/components/ui/Pagination";
 import { ErrorState, LoadingState } from "@/components/ui/StateCard";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import type { User } from "@/lib/types";
+
+const PAGE_SIZE = 25;
 
 const formatRemovedAt = (value?: string | null) =>
   value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
@@ -42,6 +45,11 @@ export default function AdminUsersPage() {
   const [mounted, setMounted] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  // Each tab keeps its own place, so switching tabs does not lose it.
+  const [activePage, setActivePage] = useState(1);
+  const [removedPage, setRemovedPage] = useState(1);
+  const [activeMeta, setActiveMeta] = useState<PaginationMeta | null>(null);
+  const [removedMeta, setRemovedMeta] = useState<PaginationMeta | null>(null);
   const signedIn = useMemo(() => hasSession(), []);
   const currentUser = useMemo(() => getStoredUser(), []);
   // Granting or revoking admin access is reserved for the platform owner.
@@ -54,12 +62,23 @@ export default function AdminUsersPage() {
   const refresh = useCallback(async () => {
     if (!signedIn) return;
     const [active, archive] = await Promise.all([
-      api.adminUsers(),
-      api.getArchivedUsers(),
+      api.adminUsers({ page: activePage, pageSize: PAGE_SIZE }),
+      api.getArchivedUsers({ page: removedPage, pageSize: PAGE_SIZE }),
     ]);
+    // Removing or restoring the last account on a page can leave that page past
+    // the end; stepping back triggers a refetch of the new last page.
+    const validActive = clampPage(activePage, active.pagination);
+    const validRemoved = clampPage(removedPage, archive.pagination);
+    if (validActive !== activePage || validRemoved !== removedPage) {
+      setActivePage(validActive);
+      setRemovedPage(validRemoved);
+      return;
+    }
     setUsers(active.users);
+    setActiveMeta(active.pagination);
     setRemoved(archive.users);
-  }, [signedIn]);
+    setRemovedMeta(archive.pagination);
+  }, [signedIn, activePage, removedPage]);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -246,7 +265,9 @@ export default function AdminUsersPage() {
                 : "border-[var(--border)] text-[var(--muted)] hover:text-white"
             }`}
           >
-            {key === "active" ? `Accounts (${users.length})` : `Removed (${removed.length})`}
+            {key === "active"
+              ? `Accounts (${activeMeta?.total ?? users.length})`
+              : `Removed (${removedMeta?.total ?? removed.length})`}
           </button>
         ))}
       </div>
@@ -358,6 +379,15 @@ export default function AdminUsersPage() {
           </>
         )}
       </div>
+      )}
+
+      {!loadError && (
+        <Pagination
+          pagination={view === "active" ? activeMeta : removedMeta}
+          onPageChange={view === "active" ? setActivePage : setRemovedPage}
+          busy={loading}
+          noun="accounts"
+        />
       )}
 
       {mounted && createPortal(

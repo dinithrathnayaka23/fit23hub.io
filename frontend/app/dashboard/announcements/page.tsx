@@ -6,11 +6,14 @@ import { faBullhorn, faCircleCheck } from "@fortawesome/free-solid-svg-icons";
 import FadeIn from "@/components/animations/FadeIn";
 import AnnouncementCard from "@/components/cards/AnnouncementCard";
 import { ANNOUNCEMENT_CATEGORIES, CATEGORY_ORDER } from "@/lib/announcement-meta";
-import { api } from "@/lib/api";
+import { api, type PaginationMeta } from "@/lib/api";
 import { hasSession } from "@/lib/auth";
+import Pagination from "@/components/ui/Pagination";
 import type { Announcement, AnnouncementCategory } from "@/lib/types";
 
 type Filter = "all" | "pending" | "upcoming";
+
+const PAGE_SIZE = 20;
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: "all", label: "All notices" },
@@ -23,6 +26,8 @@ export default function StudentAnnouncementsPage() {
   const [pending, setPending] = useState(0);
   const [filter, setFilter] = useState<Filter>("all");
   const [category, setCategory] = useState<AnnouncementCategory | "">("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [ackingId, setAckingId] = useState("");
@@ -43,9 +48,11 @@ export default function StudentAnnouncementsPage() {
       const result = await api.getAnnouncements({
         ...(filter === "all" ? {} : { filter }),
         ...(category ? { category } : {}),
-        pageSize: 50,
+        page,
+        pageSize: PAGE_SIZE,
       });
       setAnnouncements(result.announcements);
+      setPagination(result.pagination);
       setPending(result.pending);
       setError("");
     } catch (err) {
@@ -53,7 +60,7 @@ export default function StudentAnnouncementsPage() {
     } finally {
       setLoading(false);
     }
-  }, [signedIn, filter, category]);
+  }, [signedIn, filter, category, page]);
 
   useEffect(() => {
     load();
@@ -114,7 +121,10 @@ export default function StudentAnnouncementsPage() {
           <button
             key={option.value}
             type="button"
-            onClick={() => setFilter(option.value)}
+            onClick={() => {
+              setPage(1);
+              setFilter(option.value);
+            }}
             className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
               filter === option.value
                 ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.12)] text-[#c8eeff]"
@@ -128,7 +138,10 @@ export default function StudentAnnouncementsPage() {
 
         <select
           value={category}
-          onChange={(event) => setCategory(event.target.value as AnnouncementCategory | "")}
+          onChange={(event) => {
+            setPage(1);
+            setCategory(event.target.value as AnnouncementCategory | "");
+          }}
           className="ml-auto rounded-lg border border-[var(--border)] bg-[rgba(11,18,32,0.6)] px-3 py-1.5 text-xs text-[var(--muted)] outline-none focus:border-[var(--accent)]"
         >
           <option value="">Every category</option>
@@ -164,6 +177,8 @@ export default function StudentAnnouncementsPage() {
           </FadeIn>
         ))
       )}
+
+      {!loading && <Pagination pagination={pagination} onPageChange={setPage} noun="notices" />}
     </section>
   );
 }
