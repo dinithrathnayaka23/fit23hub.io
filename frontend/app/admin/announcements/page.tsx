@@ -7,13 +7,16 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUsers } from "@fortawesome/free-solid-svg-icons";
 import AnnouncementCard from "@/components/cards/AnnouncementCard";
 import { ANNOUNCEMENT_CATEGORIES, CATEGORY_ORDER } from "@/lib/announcement-meta";
-import { api, type AnnouncementInput } from "@/lib/api";
+import { api, type AnnouncementInput, type PaginationMeta } from "@/lib/api";
 import { hasSession } from "@/lib/auth";
+import Pagination, { clampPage } from "@/components/ui/Pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import { useEscapeKey } from "@/lib/use-escape-key";
 import type { Announcement, AnnouncementCategory, AnnouncementReader } from "@/lib/types";
 
 type View = "live" | "drafts" | "archived";
+
+const PAGE_SIZE = 20;
 
 const EMPTY_FORM = {
   title: "",
@@ -58,8 +61,13 @@ function CoverageBar({ seen, audience }: { seen: number; audience: number }) {
 
 export default function AdminAnnouncementsPage() {
   const [view, setView] = useState<View>("live");
-  const [active, setActive] = useState<Announcement[]>([]);
-  const [archived, setArchived] = useState<Announcement[]>([]);
+  // Only the tab being viewed is fetched, one page at a time.
+  const [items, setItems] = useState<Announcement[]>([]);
+  const [itemsView, setItemsView] = useState<View | null>(null);
+  const [counts, setCounts] = useState({ published: 0, drafts: 0, archived: 0 });
+  // Each tab keeps its own place, so switching tabs does not lose it.
+  const [pages, setPages] = useState<Record<View, number>>({ live: 1, drafts: 1, archived: 1 });
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [audience, setAudience] = useState(0);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState("");
@@ -88,14 +96,27 @@ export default function AdminAnnouncementsPage() {
 
   const refresh = useCallback(async () => {
     if (!signedIn) return;
-    const [live, bin] = await Promise.all([
-      api.adminAnnouncements({ pageSize: 50 }),
-      api.adminAnnouncements({ archived: true, pageSize: 50 }),
-    ]);
-    setActive(live.announcements);
-    setArchived(bin.announcements);
-    setAudience(live.audience);
-  }, [signedIn]);
+    const target = pages[view];
+    const result = await api.adminAnnouncements({
+      ...(view === "archived"
+        ? { archived: true }
+        : { status: view === "live" ? ("published" as const) : ("draft" as const) }),
+      page: target,
+      pageSize: PAGE_SIZE,
+    });
+    // Archiving or publishing the last item on a page can leave that page past
+    // the end; stepping back triggers a refetch of the new last page.
+    const valid = clampPage(target, result.pagination);
+    if (valid !== target) {
+      setPages((current) => ({ ...current, [view]: valid }));
+      return;
+    }
+    setItems(result.announcements);
+    setItemsView(view);
+    setPagination(result.pagination);
+    setCounts(result.counts);
+    setAudience(result.audience);
+  }, [signedIn, view, pages]);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -144,6 +165,8 @@ export default function AdminAnnouncementsPage() {
       } else {
         await api.createAnnouncement(buildPayload(publish));
         setNotice(publish ? "Published to the batch." : "Saved as a draft.");
+        // Newest first, so the notice just posted is on page 1 of its tab.
+        setPages((current) => ({ ...current, [publish ? "live" : "drafts"]: 1 }));
         setView(publish ? "live" : "drafts");
       }
       resetForm();
@@ -198,14 +221,13 @@ export default function AdminAnnouncementsPage() {
     }
   };
 
-  const live = active.filter((item) => item.publishedAt);
-  const drafts = active.filter((item) => !item.publishedAt);
-  const list = view === "live" ? live : view === "drafts" ? drafts : archived;
+  // Until the new tab's page arrives, show nothing rather than the old tab's rows.
+  const list = itemsView === view ? items : [];
 
   const tabs: { value: View; label: string }[] = [
-    { value: "live", label: `Published (${live.length})` },
-    { value: "drafts", label: `Drafts (${drafts.length})` },
-    { value: "archived", label: `Archive (${archived.length})` },
+    { value: "live", label: `Published (${counts.published})` },
+    { value: "drafts", label: `Drafts (${counts.drafts})` },
+    { value: "archived", label: `Archive (${counts.archived})` },
   ];
 
   useEscapeKey(() => setReaders(null), readers !== null);
@@ -461,6 +483,15 @@ export default function AdminAnnouncementsPage() {
             )}
           </div>
         ))
+      )}
+
+      {!loadError && list.length > 0 && (
+        <Pagination
+          pagination={pagination}
+          onPageChange={(next) => setPages((current) => ({ ...current, [view]: next }))}
+          busy={loading}
+          noun="announcements"
+        />
       )}
 
       {mounted && createPortal(
