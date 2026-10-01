@@ -5,10 +5,14 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBoxArchive, faCloudArrowUp, faRotateLeft, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import MaterialCard from "@/components/cards/MaterialCard";
 import UploadMaterialDialog, { type MaterialDefaults } from "@/components/materials/UploadMaterialDialog";
-import { api } from "@/lib/api";
+import { api, type PaginationMeta } from "@/lib/api";
 import { getStoredUser, hasSession } from "@/lib/auth";
+import Pagination, { clampPage } from "@/components/ui/Pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateCard";
 import type { Material } from "@/lib/types";
+
+// A multiple of the 2- and 3-column grid widths, so full pages have no ragged row.
+const PAGE_SIZE = 24;
 
 const formatArchivedAt = (value?: string | null) =>
   value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
@@ -26,6 +30,11 @@ export default function AdminMaterialsPage() {
   const [busyId, setBusyId] = useState("");
   const [loadError, setLoadError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  // Each tab keeps its own place, so switching tabs does not lose it.
+  const [activePage, setActivePage] = useState(1);
+  const [archivePage, setArchivePage] = useState(1);
+  const [activeMeta, setActiveMeta] = useState<PaginationMeta | null>(null);
+  const [archiveMeta, setArchiveMeta] = useState<PaginationMeta | null>(null);
 
   const signedIn = useMemo(() => hasSession(), []);
   // Permanent deletion is irreversible, so only the platform owner sees it.
@@ -34,12 +43,23 @@ export default function AdminMaterialsPage() {
   const refresh = useCallback(async () => {
     if (!signedIn) return;
     const [active, bin] = await Promise.all([
-      api.getMaterials(),
-      api.getArchivedMaterials(),
+      api.getMaterials({ page: activePage, pageSize: PAGE_SIZE }),
+      api.getArchivedMaterials({ page: archivePage, pageSize: PAGE_SIZE }),
     ]);
+    // Archiving or restoring the last item on a page can leave that page past
+    // the end; stepping back triggers a refetch of the new last page.
+    const validActive = clampPage(activePage, active.pagination);
+    const validArchive = clampPage(archivePage, bin.pagination);
+    if (validActive !== activePage || validArchive !== archivePage) {
+      setActivePage(validActive);
+      setArchivePage(validArchive);
+      return;
+    }
     setMaterials(active.materials);
+    setActiveMeta(active.pagination);
     setArchived(bin.materials);
-  }, [signedIn]);
+    setArchiveMeta(bin.pagination);
+  }, [signedIn, activePage, archivePage]);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -79,6 +99,11 @@ export default function AdminMaterialsPage() {
     setView("active");
     setError("");
     setNotice(`"${material.title}" published.`);
+    // Newest first, so the material just published is on page 1.
+    if (activePage !== 1) {
+      setActivePage(1);
+      return;
+    }
     refresh().catch((err) => setError(err instanceof Error ? err.message : "Could not refresh the list"));
   };
 
@@ -113,7 +138,9 @@ export default function AdminMaterialsPage() {
                   : "border-[var(--border)] text-[var(--muted)] hover:text-white"
               }`}
             >
-              {key === "active" ? `Published (${materials.length})` : `Archive (${archived.length})`}
+              {key === "active"
+                ? `Published (${activeMeta?.total ?? materials.length})`
+                : `Archive (${archiveMeta?.total ?? archived.length})`}
             </button>
           ))}
         </div>
@@ -202,6 +229,15 @@ export default function AdminMaterialsPage() {
             />
           ))}
         </div>
+      )}
+
+      {!loadError && (
+        <Pagination
+          pagination={view === "active" ? activeMeta : archiveMeta}
+          onPageChange={view === "active" ? setActivePage : setArchivePage}
+          busy={loading}
+          noun="materials"
+        />
       )}
 
       <UploadMaterialDialog
