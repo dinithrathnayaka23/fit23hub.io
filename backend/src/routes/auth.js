@@ -144,54 +144,32 @@ router.post("/register", async (req, res) => {
 
     const email = input.email.toLowerCase();
     const existing = await prisma.user.findUnique({ where: { email } });
-    const passwordHash = await bcrypt.hash(input.password, 10);
 
-    let user;
-
+    // An existing account is never touched from here, whatever its role.
+    // Registration is unauthenticated, so letting it update a row would let
+    // anyone who knows an address overwrite that account's password.
     if (existing) {
-      // Allow admin email to be used in student registration flow without creating a duplicate account.
-      if (existing.role !== "ADMIN") {
-        return res.status(409).json({ message: "Email already registered" });
-      }
-
-      user = await prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          fullName: input.fullName,
-          indexNo: input.indexNo,
-          passwordHash,
-          status: "ACTIVE",
-          emailVerifiedAt: null,
-        },
-        select: {
-          id: true,
-          fullName: true,
-          indexNo: true,
-          email: true,
-          profileImageUrl: true,
-          role: true,
-          status: true,
-        },
-      });
-    } else {
-      user = await prisma.user.create({
-        data: {
-          fullName: input.fullName,
-          indexNo: input.indexNo,
-          email,
-          passwordHash,
-        },
-        select: {
-          id: true,
-          fullName: true,
-          indexNo: true,
-          email: true,
-          profileImageUrl: true,
-          role: true,
-          status: true,
-        },
-      });
+      return res.status(409).json({ message: "Email already registered" });
     }
+
+    const passwordHash = await bcrypt.hash(input.password, 10);
+    const user = await prisma.user.create({
+      data: {
+        fullName: input.fullName,
+        indexNo: input.indexNo,
+        email,
+        passwordHash,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        indexNo: true,
+        email: true,
+        profileImageUrl: true,
+        role: true,
+        status: true,
+      },
+    });
 
     // No session is issued yet - the account is inert until the emailed link
     // is opened, which proves the student controls that @uom.lk mailbox.
