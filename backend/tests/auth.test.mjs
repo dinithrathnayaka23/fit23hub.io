@@ -205,6 +205,29 @@ describe("registration validation", () => {
     expect(res.status).toBe(400);
   });
 
+  it("cannot take over an existing admin account by registering its email", async () => {
+    const admin = await track({ role: "ADMIN" });
+    const before = await prisma.user.findUnique({ where: { id: admin.id } });
+
+    const jar = makeJar();
+    const res = await jar.fetchAs("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        fullName: "Would Be Admin", indexNo: "235125X",
+        email: admin.email, password: "Attack3r!Pass",
+      }),
+    });
+    expect(res.status).toBe(409);
+
+    // The account is untouched: same password, still verified, and the real
+    // owner can still sign in with their own password.
+    const after = await prisma.user.findUnique({ where: { id: admin.id } });
+    expect(after.passwordHash).toBe(before.passwordHash);
+    expect(after.emailVerifiedAt).not.toBeNull();
+    expect(after.fullName).toBe(before.fullName);
+    expect((await loginAs(admin.email)).result.status).toBe(200);
+  });
+
   it("rejects a weak password", async () => {
     const jar = makeJar();
     const res = await jar.fetchAs("/auth/register", {

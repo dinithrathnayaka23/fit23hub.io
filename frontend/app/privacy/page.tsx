@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "How FIT23Hub collects, uses, retains and deletes student data.",
 };
 
-const LAST_UPDATED = "9 September 2026";
+const LAST_UPDATED = "3 October 2026";
 const CONTACT_EMAIL = "rathnayakarmdno.23@uom.lk";
 
 type Row = { data: string; why: string; retention: string };
@@ -34,7 +34,7 @@ const dataRows: Row[] = [
   },
   {
     data: "AI assistant chats, sources and query logs",
-    why: "Producing answers and letting you revisit past conversations.",
+    why: "Producing answers and letting you revisit past conversations. Excerpts are processed by external AI providers - see section 7.",
     retention: "Deleted permanently when you delete your account.",
   },
   {
@@ -94,7 +94,7 @@ export default function PrivacyPolicyPage() {
             </div>
             <p>
               We do not sell your data, we do not run advertising, and we do not share your
-              information with third parties except the infrastructure providers listed below.
+              information with third parties except the infrastructure and AI providers listed below.
             </p>
           </Section>
 
@@ -164,12 +164,26 @@ export default function PrivacyPolicyPage() {
             </p>
           </Section>
 
-          <Section id="processors" title="7. Infrastructure providers">
+          <Section id="processors" title="7. Infrastructure and AI providers">
             <p>
               We rely on third-party services to run the platform: a cloud database and file
               storage provider, an application hosting provider, and an email provider used solely
               to deliver verification and password-reset messages. These providers process data on
               our behalf and are not permitted to use it for their own purposes.
+            </p>
+            <p>
+              The AI assistant uses external AI model providers. When you ask a question or
+              generate a quiz or flashcards, your question, a few short excerpts from your own
+              uploaded sources and your recent messages in that chat are sent to one of Groq,
+              Google Gemini, OpenRouter, Cerebras or Hugging Face to produce the answer. The full
+              text of a source you upload is also sent to Google Gemini to build the search index
+              that finds relevant excerpts.
+            </p>
+            <p>
+              These providers handle that text under their own terms, which for free service tiers
+              may allow them to retain it. Only what you type into or upload to the assistant is sent, never
+              your password, email or profile, but do not upload anything to it that you would not
+              want processed outside FIT23Hub.
             </p>
           </Section>
 

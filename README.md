@@ -140,7 +140,7 @@ flowchart TB
         LLM["LLM providers<br/>Groq → Gemini → OpenRouter<br/>→ Cerebras → HuggingFace"]
     end
 
-    UI -->|"JSON over HTTPS<br/>Bearer JWT"| MW
+    UI -->|"JSON over HTTPS<br/>httpOnly session cookie + CSRF header"| MW
     UI -.->|"SSE token stream"| R
     R --> PG
     R --> FS
@@ -148,7 +148,8 @@ flowchart TB
     R --> LLM
 ```
 
-**The request path in one line:** the browser holds a JWT, every call goes through `lib/api.ts`
+**The request path in one line:** the browser holds the session in an httpOnly cookie that page
+scripts cannot read, every call goes through `lib/api.ts`
 (which owns timeouts and error shaping), `requireAuth` re-validates the user against the database
 behind a 15-second cache, and the route does its work.
 
@@ -156,8 +157,9 @@ A few deliberate choices worth knowing about:
 
 - **Response compression skips `text/event-stream`.** gzip buffers output, which would hold AI
   tokens back until the whole answer finished — defeating the point of streaming.
-- **Auth is re-checked per request, not trusted from the token.** A suspended, archived or
-  unverified user is rejected within 15 seconds even with a valid, unexpired JWT.
+- **Auth is re-checked per request, not trusted from the token.** The role and status come from
+  the database row, not the JWT. A suspension, removal, password change or "sign out everywhere"
+  bumps the account's token version, which rejects every earlier token immediately.
 - **Every list query filters `deletedAt`.** Archived rows are invisible to normal reads rather than
   filtered in the UI.
 
@@ -244,7 +246,7 @@ NEXT_PUBLIC_API_URL=http://localhost:4000/api
 | `DATABASE_URL` | — | Pooled connection string in production |
 | `DIRECT_URL` | — | Direct connection, used for migrations only |
 | `JWT_SECRET` | — | At least 32 characters in production |
-| `JWT_EXPIRES_IN` | `7d` | Token lifetime |
+| `JWT_EXPIRES_IN` | `1d` | Session lifetime; there is no refresh token, so keep it short |
 | `PORT` | `4000` | |
 | `CORS_ORIGIN` | `http://localhost:3000` | Comma-separated; empty allows any origin |
 | `APP_URL` | `http://localhost:3000` | Used to build links in outgoing email |
@@ -311,8 +313,6 @@ needed**, every model id is an environment variable.
 <details>
 <summary><b>Rate limits</b></summary>
 
-| Variable | Default | Window |
-|---|---|---|
 Signed-in traffic is counted **per student**, not per IP, because a whole batch can share one
 campus NAT address.
 
@@ -381,7 +381,10 @@ The assistant is built to keep working as capability is removed:
 ## API reference
 
 All routes are prefixed with `/api`. Everything except registration, login and the public token
-flows requires `Authorization: Bearer <jwt>`.
+flows requires the `fit23hub_session` cookie, which the browser sends automatically. Every
+`POST`/`PUT`/`PATCH`/`DELETE` made with that cookie must also echo the readable `fit23hub_csrf`
+cookie in an `X-CSRF-Token` header (double-submit CSRF protection). There is no
+`Authorization` header path.
 
 <details>
 <summary><b>Authentication</b> — <code>/api/auth</code></summary>
@@ -389,7 +392,9 @@ flows requires `Authorization: Bearer <jwt>`.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/register` | Create a student account and send verification mail |
-| `POST` | `/login` | Sign in; returns the token and a safe user object |
+| `POST` | `/login` | Sign in; sets the session and CSRF cookies and returns a safe user object (never the token) |
+| `POST` | `/logout` | Clear this device's session cookies |
+| `POST` | `/logout-all` | Sign out of every device by revoking all issued tokens |
 | `GET` | `/me` | The current user |
 | `POST` | `/change-password` | |
 | `POST` | `/forgot-password` | Always answers identically, to avoid leaking who has an account |
@@ -502,7 +507,10 @@ flows requires `Authorization: Bearer <jwt>`.
 | **Transport** | `helmet` security headers, `hpp` parameter-pollution guard, explicit CORS allowlist |
 | **Rate limiting** | Per-student budgets for signed-in traffic, a per-IP ceiling for signed-out traffic, and a per-account limit on sign-in and recovery |
 | **Passwords** | `bcrypt` hashes; 10–72 characters with upper, lower, digit and symbol |
-| **Tokens** | Short-lived JWTs; the user row is re-validated per request behind a 15s cache |
+| **Sessions** | A JWT in an httpOnly, SameSite cookie that page scripts cannot read; never returned in a response body |
+| **CSRF** | Double-submit check on every state-changing request made with a session cookie |
+| **Revocation** | A per-user token version, bumped on password change or reset, suspension, removal and "sign out everywhere", rejects every earlier token at once |
+| **Tokens** | Short-lived (1 day by default); the user row is re-validated per request behind a 15s cache, shared through Redis when configured |
 | **Account state** | Suspended, unverified and archived accounts are refused at login *and* in middleware |
 | **Registration** | `@uom.lk` addresses and the `23XXXXA` index format only |
 | **Email flows** | Single-use hashed tokens with expiry; reset invalidates every prior outstanding link |
@@ -626,7 +634,7 @@ Honest about what is not done yet:
 
 - [ ] Search input on the admin users page — the API supports it, the console does not expose it
 - [ ] Trigram indexes (`pg_trgm`) if the library ever grows past tens of thousands of rows
-- [ ] Automated test suite; today the AI layer has self-test harnesses and the rest is verified by hand
+- [ ] Frontend tests; the backend has an integration suite (`backend/tests`, run with `npm test`) and the AI layer has self-test harnesses, but the frontend is checked by `tsc`, ESLint and a build only
 - [ ] Gallery page is hardcoded and currently unreachable — it has no navigation link and needs
       admin-managed albums before it earns one
 - [ ] Push notifications and a digest email
